@@ -1,7 +1,14 @@
 import mysql from "mysql2/promise";
 import { AsyncLocalStorage } from "node:async_hooks";
 
-const DEFAULT_DATABASE_URL = "mysql://root:dbo130312@127.0.0.1:3306/sistema_saas";
+/**
+ * Conexão compatível com:
+ * - Local: usa root / dbo130312 / 127.0.0.1 / sistema_saas
+ * - Railway: usa DATABASE_URL ou variáveis DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
+ */
+const DATABASE_URL =
+  process.env.DATABASE_URL ||
+  `mysql://${process.env.DB_USER || "root"}:${process.env.DB_PASSWORD || "dbo130312"}@${process.env.DB_HOST || "127.0.0.1"}:${process.env.DB_PORT || "3306"}/${process.env.DB_NAME || "sistema_saas"}`;
 
 const EMPRESA_ID_SENTINEL = "__EMPRESA_ID_ATUAL__";
 export const EMPRESA_ID: any = EMPRESA_ID_SENTINEL;
@@ -29,7 +36,16 @@ let pool: mysql.Pool | null = null;
 
 export function getPool() {
   if (!pool) {
-    pool = mysql.createPool(process.env.DATABASE_URL || DEFAULT_DATABASE_URL);
+    pool = mysql.createPool({
+      uri: DATABASE_URL,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+    });
+
+    console.log(
+      `Banco configurado em: ${process.env.DB_HOST || "127.0.0.1"}/${process.env.DB_NAME || "sistema_saas"}`
+    );
   }
   return pool;
 }
