@@ -22,6 +22,9 @@ import Login from "@/pages/Login";
 import AgendamentoCliente from "@/pages/AgendamentoCliente";
 import UsuariosPermissoes from "@/pages/UsuariosPermissoes";
 import AdminMaster from "@/pages/AdminMaster";
+import CadastroEmpresa from "@/pages/CadastroEmpresa";
+import EsqueciSenha from "@/pages/EsqueciSenha";
+import RedefinirSenha from "@/pages/RedefinirSenha";
 
 
 import {
@@ -89,7 +92,7 @@ const empresaMenuPadrao: EmpresaMenuConfig = {
 
 function slugDaRota(pathname: string) {
   const seg = String(pathname || "").split("?")[0].split("/").filter(Boolean)[0] || "";
-  const reservados = new Set(["login", "agendar", "admin", "admin-master", "404"]);
+  const reservados = new Set(["login", "agendar", "admin", "admin-master", "cadastrar-empresa", "empresa-nao-informada", "esqueci-senha", "redefinir-senha", "404"]);
   return seg && !reservados.has(seg) ? seg : "";
 }
 
@@ -519,6 +522,9 @@ function ProtectedApp() {
   const slug = slugDaRota(location);
 
   const rotaLogin = Boolean(slug && location === `/${slug}/login`);
+  const rotaCadastroEmpresa = location === "/cadastrar-empresa";
+  const rotaEsqueciSenha = Boolean(slug && location === `/${slug}/esqueci-senha`);
+  const rotaRedefinirSenha = Boolean(slug && location.startsWith(`/${slug}/redefinir-senha`));
 
   const rotaSemEmpresa =
     location === "/" ||
@@ -529,7 +535,16 @@ function ProtectedApp() {
   const rotaPublicaAgendamento = location === "/agendar" || location.startsWith("/agendar?") || Boolean(slug && (location === `/${slug}/agendar` || location.startsWith(`/${slug}/agendar?`)));
 
   useEffect(() => {
-    if (rotaPublicaAgendamento || rotaAdmin || rotaSemEmpresa) return;
+    if (
+      rotaPublicaAgendamento ||
+      rotaAdmin ||
+      rotaSemEmpresa ||
+      rotaCadastroEmpresa ||
+      rotaEsqueciSenha ||
+      rotaRedefinirSenha
+    ) {
+      return;
+    }
 
     if (!carregando && !logado && !rotaLogin) {
       if (!slug) {
@@ -543,10 +558,22 @@ function ProtectedApp() {
     if (!carregando && logado && rotaLogin) {
       navigate(`/${slug}/`);
     }
-  }, [carregando, logado, location, navigate, rotaPublicaAgendamento, rotaLogin, rotaAdmin, rotaSemEmpresa, slug]);
+  }, [carregando, logado, location, navigate, rotaPublicaAgendamento, rotaLogin, rotaAdmin, rotaSemEmpresa, rotaCadastroEmpresa, rotaEsqueciSenha, rotaRedefinirSenha, slug]);
 
   if (rotaAdmin) {
     return <AdminMaster />;
+  }
+
+  if (rotaCadastroEmpresa) {
+    return <CadastroEmpresa />;
+  }
+
+  if (rotaEsqueciSenha) {
+    return <EsqueciSenha />;
+  }
+
+  if (rotaRedefinirSenha) {
+    return <RedefinirSenha />;
   }
 
   if (rotaPublicaAgendamento) {

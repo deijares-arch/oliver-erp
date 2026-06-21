@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import fs from "node:fs/promises";
 import path from "node:path";
+import crypto from "node:crypto";
 import { EMPRESA_ID, execute, fromTime, getEmpresaContext, query, toDateBR, toDateISO, toTime } from "./db";
 
 function ok(res: any, data: any) {
@@ -410,6 +411,334 @@ export function registerApiRoutes(app: Express) {
     };
   }
 
+
+  function slugCadastroEmpresa(valor: any) {
+    const slug = String(valor || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60);
+
+    return slug || `empresa-${Date.now()}`;
+  }
+
+  async function slugEmpresaDisponivel(baseSlug: string) {
+    let slug = slugCadastroEmpresa(baseSlug);
+    let tentativa = 1;
+
+    while (true) {
+      const existente = await query("SELECT id FROM empresas WHERE slug = ? LIMIT 1", [slug]).catch(() => []);
+      if (!existente[0]) return slug;
+
+      tentativa += 1;
+      slug = `${slugCadastroEmpresa(baseSlug)}-${tentativa}`;
+    }
+  }
+
+  function dataBRPublica(valor: any) {
+    return valor ? toDateBR(valor) : "";
+  }
+
+
+  app.post("/api/publico/cadastrar-empresa", async (req, res) => {
+    try {
+      await ensureMultiEmpresaTables();
+
+      const b = req.body || {};
+      const empresaNome = String(b.empresaNome || b.nomeEmpresa || b.nome || "").trim();
+      const segmento = String(b.segmento || "Teste").trim();
+      const documento = String(b.documento || "").trim();
+      const telefone = String(b.telefone || "").trim();
+      const emailEmpresa = String(b.email || "").trim().toLowerCase();
+      const cidade = String(b.cidade || "").trim();
+      const uf = String(b.uf || "").trim().toUpperCase().slice(0, 2);
+      const responsavelNome = String(b.responsavelNome || b.adminNome || "").trim();
+      const responsavelEmail = String(b.responsavelEmail || b.adminEmail || "").trim().toLowerCase();
+      const senha = String(b.senha || "").trim();
+      const confirmarSenha = String(b.confirmarSenha || "").trim();
+      const aceitarTermos = Boolean(b.aceitarTermos);
+
+      if (!empresaNome) throw new Error("Informe o nome da empresa.");
+      if (!responsavelNome) throw new Error("Informe o nome do responsável.");
+      if (!telefone) throw new Error("Informe o WhatsApp.");
+      if (!responsavelEmail) throw new Error("Informe o e-mail de acesso.");
+      if (!senha) throw new Error("Informe uma senha.");
+      if (senha.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres.");
+      if (senha !== confirmarSenha) throw new Error("As senhas não conferem.");
+      if (!aceitarTermos) throw new Error("Confirme que está ciente do período de teste.");
+
+      const slugBase = slugCadastroEmpresa(empresaNome);
+      const slug = await slugEmpresaDisponivel(slugBase);
+
+     
+      const observacao = [
+        "Cadastro solicitado pela tela pública de teste grátis.",
+        segmento ? `Segmento: ${segmento}` : "",
+        cidade || uf ? `Local: ${cidade}${cidade && uf ? "/" : ""}${uf}` : "",
+        "Teste liberado automaticamente por 7 dias.",
+        "Renovação somente mediante confirmação de pagamento pelo administrador master.",
+      ].filter(Boolean).join("\n");
+
+      const result = await execute(
+        `INSERT INTO empresas
+         (nome, marca, slug, email, telefone, documento, endereco, observacao, plano, ativo, ativa_ate, dias_aviso, bloqueio_motivo, logo_dbo, logo_empresa, logo_menu, fundo_login, cor_primaria)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Teste', 1, DATE_ADD(CURDATE(), INTERVAL 7 DAY), 2, NULL, '/logo-dbo.png', NULL, NULL, NULL, '#f6b21a')`,
+        [
+          empresaNome,
+          empresaNome,
+          slug,
+          emailEmpresa || responsavelEmail,
+          telefone,
+          documento || null,
+          cidade || uf ? `${cidade}${cidade && uf ? "/" : ""}${uf}` : null,
+          observacao,
+        ]
+      );
+
+  
+      await execute(
+        `INSERT INTO usuarios (empresa_id, nome, email, senha, telefone, perfil, ativo, status)
+         VALUES (?, ?, ?, ?, ?, 'Administrador', 1, 'ATIVO')`,
+        [result.insertId, responsavelNome, responsavelEmail, senha, telefone || null]
+      );
+
+      const protocoloRows = await query(
+        `SELECT id, nome, slug, ativa_ate FROM empresas WHERE id = ? LIMIT 1`,
+        [result.insertId]
+      );
+
+      const protocolo = protocoloRows[0] || {};
+      const host = String(req.headers["x-forwarded-host"] || req.headers.host || "");
+      const proto = String(req.headers["x-forwarded-proto"] || "https");
+      const origem = host ? `${proto}://${host}` : "";
+
+      ok(res, {
+        empresaId: String(result.insertId),
+        empresaNome: protocolo.nome || empresaNome,
+        slug,
+        linkAcesso: `${origem}/${slug}/login`,
+        adminEmail: responsavelEmail,
+        ativaAte: dataBRPublica(protocolo.ativa_ate),
+        plano: "Teste",
+        diasTeste: 7,
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+
+  async function ensureRecuperacaoSenhaTable() {
+    await execute(`
+      CREATE TABLE IF NOT EXISTS recuperacao_senha (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        empresa_id INT NOT NULL,
+        usuario_id INT NOT NULL,
+        token VARCHAR(255) NOT NULL,
+        expira_em DATETIME NOT NULL,
+        usado TINYINT(1) NOT NULL DEFAULT 0,
+        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_recuperacao_token (token),
+        INDEX idx_recuperacao_usuario (usuario_id),
+        INDEX idx_recuperacao_empresa (empresa_id)
+      )
+    `).catch(() => undefined);
+  }
+
+  function origemDaRequisicao(req: any) {
+    const host = String(req.headers["x-forwarded-host"] || req.headers.host || "");
+    const proto = String(req.headers["x-forwarded-proto"] || "http");
+    return host ? `${proto}://${host}` : "";
+  }
+
+  async function enviarEmailRecuperacaoSenha(destino: string, nome: string, link: string) {
+    const assunto = "Redefinição de senha - Oliver ERP";
+
+    const html = `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827">
+        <h2 style="color:#b8860b">Redefinição de senha - Oliver ERP</h2>
+        <p>Olá, <strong>${nome || "usuário"}</strong>.</p>
+        <p>Recebemos uma solicitação para redefinir sua senha.</p>
+        <p>
+          <a href="${link}" style="display:inline-block;background:#d4af37;color:#000;font-weight:bold;text-decoration:none;padding:12px 18px;border-radius:10px">
+            Criar nova senha
+          </a>
+        </p>
+        <p>Este link expira em <strong>30 minutos</strong>.</p>
+        <p>Se você não solicitou esta alteração, ignore este e-mail.</p>
+        <p style="color:#6b7280;font-size:12px">Oliver ERP - Gestão Inteligente para Empresas</p>
+      </div>
+    `;
+
+    const texto = [
+      `Olá, ${nome || "usuário"}.`,
+      "",
+      "Recebemos uma solicitação para redefinir sua senha.",
+      "",
+      "Acesse o link abaixo para criar uma nova senha:",
+      link,
+      "",
+      "Este link expira em 30 minutos.",
+      "",
+      "Se você não solicitou esta alteração, ignore este e-mail.",
+      "",
+      "Oliver ERP - Gestão Inteligente para Empresas",
+    ].join("\\n");
+
+    // Envio profissional usando Resend.
+    // Configure no Railway:
+    // RESEND_API_KEY=re_xxxxx
+    // EMAIL_FROM=Oliver ERP <contato@seudominio.com>
+    if (process.env.RESEND_API_KEY) {
+      const resposta = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: process.env.EMAIL_FROM || "Oliver ERP <onboarding@resend.dev>",
+          to: [destino],
+          subject: assunto,
+          html,
+          text: texto,
+        }),
+      });
+
+      if (!resposta.ok) {
+        const detalhe = await resposta.text().catch(() => "");
+        throw new Error(`Erro ao enviar e-mail: ${detalhe || resposta.statusText}`);
+      }
+
+      return { enviado: true };
+    }
+
+    console.log("Link de recuperação de senha:", link);
+    return { enviado: false, previewLink: link };
+  }
+
+
+  app.post("/api/auth/esqueci-senha", async (req, res) => {
+    try {
+      await ensureAuthTables();
+      await ensureRecuperacaoSenhaTable();
+
+      const b = req.body || {};
+      const email = String(b.email || "").trim().toLowerCase();
+      const empresaSlug = String(b.empresaSlug || b.slug || "").trim().toLowerCase();
+
+      if (!email) throw new Error("Informe o e-mail.");
+      if (!empresaSlug) throw new Error("Empresa não informada.");
+
+      const rows = await query(
+        `SELECT u.id AS usuario_id,
+                u.nome,
+                u.email,
+                u.empresa_id,
+                e.slug
+         FROM usuarios u
+         INNER JOIN empresas e ON e.id = u.empresa_id
+         WHERE e.slug = ?
+           AND u.email = ?
+           AND u.ativo = 1
+           AND u.status = 'ATIVO'
+         LIMIT 1`,
+        [empresaSlug, email]
+      );
+
+      // Resposta genérica para não expor se o e-mail existe ou não.
+      if (!rows[0]) {
+        ok(res, { enviado: true });
+        return;
+      }
+
+      const usuario = rows[0];
+      const token = crypto.randomBytes(32).toString("hex");
+
+      await execute(
+        "UPDATE recuperacao_senha SET usado = 1 WHERE empresa_id = ? AND usuario_id = ? AND usado = 0",
+        [usuario.empresa_id, usuario.usuario_id]
+      ).catch(() => undefined);
+
+      await execute(
+        `INSERT INTO recuperacao_senha
+         (empresa_id, usuario_id, token, expira_em, usado)
+         VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE), 0)`,
+        [usuario.empresa_id, usuario.usuario_id, token]
+      );
+
+      const origem = origemDaRequisicao(req);
+      const link = `${origem}/${usuario.slug}/redefinir-senha?token=${token}`;
+
+      const envio = await enviarEmailRecuperacaoSenha(usuario.email, usuario.nome, link);
+
+      ok(res, {
+        enviado: true,
+        previewLink: envio.previewLink || "",
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  app.post("/api/auth/redefinir-senha", async (req, res) => {
+    try {
+      await ensureAuthTables();
+      await ensureRecuperacaoSenhaTable();
+
+      const b = req.body || {};
+      const token = String(b.token || "").trim();
+      const senha = String(b.senha || "").trim();
+      const confirmarSenha = String(b.confirmarSenha || "").trim();
+      const empresaSlug = String(b.empresaSlug || b.slug || "").trim().toLowerCase();
+
+      if (!empresaSlug) throw new Error("Empresa não informada.");
+      if (!token) throw new Error("Token inválido.");
+      if (!senha) throw new Error("Informe a nova senha.");
+      if (senha.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres.");
+      if (senha !== confirmarSenha) throw new Error("As senhas não conferem.");
+
+      const rows = await query(
+        `SELECT r.id,
+                r.usuario_id,
+                r.empresa_id,
+                u.email,
+                e.slug
+         FROM recuperacao_senha r
+         INNER JOIN usuarios u ON u.id = r.usuario_id AND u.empresa_id = r.empresa_id
+         INNER JOIN empresas e ON e.id = r.empresa_id
+         WHERE r.token = ?
+           AND r.usado = 0
+           AND r.expira_em >= NOW()
+           AND e.slug = ?
+         LIMIT 1`,
+        [token, empresaSlug]
+      );
+
+      const recuperacao = rows[0];
+      if (!recuperacao) {
+        res.status(400).json({ ok: false, error: "Link inválido ou expirado." });
+        return;
+      }
+
+      await execute(
+        "UPDATE usuarios SET senha = ? WHERE id = ? AND empresa_id = ?",
+        [senha, recuperacao.usuario_id, recuperacao.empresa_id]
+      );
+
+      await execute(
+        "UPDATE recuperacao_senha SET usado = 1 WHERE id = ?",
+        [recuperacao.id]
+      );
+
+      ok(res, { atualizado: true });
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
   // =========================
   // LOGIN / USUÁRIOS / PERMISSÕES
   // =========================
@@ -451,18 +780,10 @@ export function registerApiRoutes(app: Express) {
       )
     `).catch(() => undefined);
 
-    await execute(
-      `INSERT IGNORE INTO usuarios (empresa_id, nome, email, senha, perfil, ativo, status)
-       VALUES (?, 'Administrador', 'admin@sistema.com', 'admin123', 'Administrador', 1, 'ATIVO')`,
-      [EMPRESA_ID]
-    ).catch(() => undefined);
-
-    await execute(
-      `INSERT IGNORE INTO usuarios (empresa_id, nome, email, senha, perfil, ativo, status)
-       VALUES (?, 'DEIJARES OLIVEIRA', 'deijares@gmail.com', '130312', 'Administrador', 1, 'ATIVO')`,
-      [EMPRESA_ID]
-    ).catch(() => undefined);
-  }
+    // Não criar usuários automaticamente aqui.
+    // O administrador master fica apenas na tabela administradores_master.
+    // Cada empresa terá somente os usuários próprios dela.
+}
 
   function normalizarPermissoes(valor: any): string[] {
     if (Array.isArray(valor)) return valor.map(String).filter(Boolean);

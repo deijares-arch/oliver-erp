@@ -47,7 +47,7 @@ function carregarConfigLocal(): LoginConfig {
 
 export default function Login() {
   const [location, navigate] = useLocation();
-  const slugEmpresa = String(location || "").split("/").filter(Boolean)[0] || "letsbarbearia";
+  const slugEmpresa = String(location || "").split("/").filter(Boolean)[0] || "";
   const { login } = useAuth();
 
   const [config, setConfig] = useState<LoginConfig>({
@@ -353,7 +353,12 @@ export default function Login() {
                   type="button"
                   className="font-medium text-[#b8860b]"
                   onClick={() => {
-                    toast.info("Entre em contato com o administrador para recuperar a senha.");
+                    if (!slugEmpresa) {
+                      toast.error("Empresa não informada.");
+                      return;
+                    }
+
+                    navigate(`/${slugEmpresa}/esqueci-senha`);
                   }}
                 >
                   Esqueceu sua senha?

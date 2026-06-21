@@ -9,33 +9,82 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 
-
-function lerCookie(cookieHeader: string | undefined, nome: string) {
-  const cookie = String(cookieHeader || "");
-  const partes = cookie.split(";").map((p) => p.trim());
-  const encontrado = partes.find((p) => p.startsWith(`${nome}=`));
-  return encontrado ? decodeURIComponent(encontrado.slice(nome.length + 1)) : "";
-}
-
 function primeiroSegmento(url: string) {
   const seg = String(url || "").split("?")[0].split("/").filter(Boolean)[0] || "";
-  const reservados = new Set(["api", "admin", "admin-master", "assets", "uploads", "agendar", "login"]);
+
+  const reservados = new Set([
+    "api",
+    "admin",
+    "admin-master",
+    "assets",
+    "uploads",
+    "agendar",
+    "login",
+    "cadastrar-empresa",
+    "empresa-nao-informada",
+  ]);
+
   return reservados.has(seg) ? "" : seg;
+}
+
+function rotaLivreSemEmpresa(req: express.Request) {
+  const url = String(req.originalUrl || "");
+
+  return (
+    url === "/" ||
+    url === "/login" ||
+    url === "/cadastrar-empresa" ||
+    url === "/empresa-nao-informada" ||
+    url.startsWith("/api/publico/cadastrar-empresa") ||
+    url.startsWith("/api/health") ||
+    url.startsWith("/api/master") ||
+    url.startsWith("/admin") ||
+    url.startsWith("/admin-master") ||
+    url.startsWith("/assets") ||
+    url.startsWith("/uploads")
+  );
 }
 
 async function resolverEmpresa(req: express.Request) {
   const body: any = req.body || {};
   const queryParams: any = req.query || {};
-  const slug =
-    String(body.empresaSlug || body.slug || queryParams.empresaSlug || queryParams.slug || req.headers["x-empresa-slug"] || lerCookie(req.headers.cookie, "empresa_slug") || primeiroSegmento(req.originalUrl) || "").trim().toLowerCase();
 
-  if (slug) {
-    const rows = await query<any>("SELECT id, slug FROM empresas WHERE slug = ? LIMIT 1", [slug]).catch(() => []);
-    if (rows[0]) return { empresaId: Number(rows[0].id), empresaSlug: rows[0].slug };
+  // Rotas livres não podem tentar resolver slug por body/header.
+  // Isso evita erro "Empresa não encontrada" no cadastro de nova empresa.
+  if (rotaLivreSemEmpresa(req)) {
+    return { empresaId: 0, empresaSlug: "" };
   }
 
-  const cookieEmpresaId = Number(lerCookie(req.headers.cookie, "empresa_id") || req.headers["x-empresa-id"] || process.env.EMPRESA_ID || 1);
-  return { empresaId: cookieEmpresaId || 1, empresaSlug: slug || lerCookie(req.headers.cookie, "empresa_slug") || "letsbarbearia" };
+  const slug = String(
+    body.empresaSlug ||
+      body.slug ||
+      queryParams.empresaSlug ||
+      queryParams.slug ||
+      req.headers["x-empresa-slug"] ||
+      primeiroSegmento(req.originalUrl) ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+
+  if (slug) {
+    const rows = await query<any>(
+      "SELECT id, slug FROM empresas WHERE slug = ? LIMIT 1",
+      [slug]
+    ).catch(() => []);
+
+    if (rows[0]) {
+      return { empresaId: Number(rows[0].id), empresaSlug: rows[0].slug };
+    }
+
+    const erro: any = new Error("Empresa não encontrada.");
+    erro.status = 404;
+    throw erro;
+  }
+
+  const erro: any = new Error("Empresa não informada.");
+  erro.status = 400;
+  throw erro;
 }
 
 async function startServer() {
@@ -46,15 +95,35 @@ async function startServer() {
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true }));
 
-  // Arquivos enviados pelo Painel Master: /uploads/empresas/{empresa_id}/...
   app.use("/uploads", express.static(path.resolve(process.cwd(), "server", "uploads")));
 
-  app.use(async (req, _res, next) => {
+  app.use(async (req, res, next) => {
     try {
       const ctx = await resolverEmpresa(req);
       withEmpresaContext(ctx, () => next());
-    } catch (error) {
-      withEmpresaContext({ empresaId: Number(process.env.EMPRESA_ID || 1), empresaSlug: "letsbarbearia" }, () => next());
+    } catch (error: any) {
+      const status = Number(error?.status || 400);
+      const url = String(req.originalUrl || "");
+
+      if (
+        url.startsWith("/api/master") ||
+        url.startsWith("/admin") ||
+        url.startsWith("/admin-master") ||
+        url.startsWith("/api/publico/cadastrar-empresa")
+      ) {
+        withEmpresaContext({ empresaId: 0, empresaSlug: "" }, () => next());
+        return;
+      }
+
+      if (url.startsWith("/api")) {
+        res.status(status).json({
+          ok: false,
+          error: error?.message || "Empresa não informada.",
+        });
+        return;
+      }
+
+      withEmpresaContext({ empresaId: 0, empresaSlug: "" }, () => next());
     }
   });
 
@@ -80,7 +149,9 @@ async function startServer() {
         const url = req.originalUrl;
         let template = await vite.transformIndexHtml(
           url,
-          await import("node:fs/promises").then((fs) => fs.readFile(path.resolve(projectRoot, "client", "index.html"), "utf-8"))
+          await import("node:fs/promises").then((fs) =>
+            fs.readFile(path.resolve(projectRoot, "client", "index.html"), "utf-8")
+          )
         );
         res.status(200).set({ "Content-Type": "text/html" }).end(template);
       } catch (error) {
