@@ -482,25 +482,68 @@ function AppContent() {
   );
 }
 
+function EmpresaNaoInformada() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#070b12] p-6 text-white">
+      <div className="w-full max-w-xl rounded-[2rem] border border-white/10 bg-[#111827] p-8 text-center shadow-2xl">
+        <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-2xl border border-[#f6c24a]/30 bg-[#f6c24a]/10">
+          <ShieldCheck className="h-8 w-8 text-[#f6c24a]" />
+        </div>
+
+        <h1 className="text-3xl font-black text-[#f6c24a]">
+          Empresa não informada
+        </h1>
+
+        <p className="mt-4 text-base leading-7 text-slate-300">
+          Para acessar o sistema, utilize o link exclusivo fornecido pela empresa.
+        </p>
+
+        <div className="mt-6 rounded-2xl border border-white/10 bg-black/30 p-4 text-left text-sm text-slate-300">
+          <p className="font-bold text-white">Formato correto:</p>
+          <p className="mt-2 break-all text-[#f6c24a]">
+            https://oliver-erp-production.up.railway.app/nome-da-empresa/login
+          </p>
+        </div>
+
+        <p className="mt-6 text-xs text-slate-500">
+          OLIVER ERP - Gestão Inteligente para Empresas
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ProtectedApp() {
   const { logado, carregando } = useAuth();
   const [location, navigate] = useLocation();
   const slug = slugDaRota(location);
-  const rotaLogin = location === "/login" || Boolean(slug && location === `/${slug}/login`);
+
+  const rotaLogin = Boolean(slug && location === `/${slug}/login`);
+
+  const rotaSemEmpresa =
+    location === "/" ||
+    location === "/login" ||
+    location === "/empresa-nao-informada";
+
   const rotaAdmin = location === "/admin" || location === "/admin/login" || location === "/admin/empresas";
   const rotaPublicaAgendamento = location === "/agendar" || location.startsWith("/agendar?") || Boolean(slug && (location === `/${slug}/agendar` || location.startsWith(`/${slug}/agendar?`)));
 
   useEffect(() => {
-    if (rotaPublicaAgendamento || rotaAdmin) return;
+    if (rotaPublicaAgendamento || rotaAdmin || rotaSemEmpresa) return;
 
     if (!carregando && !logado && !rotaLogin) {
-      navigate(slug ? `/${slug}/login` : "/login");
+      if (!slug) {
+        navigate("/empresa-nao-informada");
+        return;
+      }
+
+      navigate(`/${slug}/login`);
     }
 
     if (!carregando && logado && rotaLogin) {
-      navigate(slug ? `/${slug}/` : "/");
+      navigate(`/${slug}/`);
     }
-  }, [carregando, logado, location, navigate, rotaPublicaAgendamento, rotaLogin, rotaAdmin, slug]);
+  }, [carregando, logado, location, navigate, rotaPublicaAgendamento, rotaLogin, rotaAdmin, rotaSemEmpresa, slug]);
 
   if (rotaAdmin) {
     return <AdminMaster />;
@@ -508,6 +551,10 @@ function ProtectedApp() {
 
   if (rotaPublicaAgendamento) {
     return <AgendamentoCliente />;
+  }
+
+  if (rotaSemEmpresa) {
+    return <EmpresaNaoInformada />;
   }
 
   if (carregando) {
