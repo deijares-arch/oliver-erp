@@ -53,6 +53,7 @@ type Profissional = {
   nome: string;
   funcao?: string;
   antecedenciaAgendamento?: number;
+  servicosIds?: string[];
 };
 
 type HorarioPublico = {
@@ -153,6 +154,14 @@ export default function AgendamentoCliente() {
     [profissionais, profissionalId],
   );
 
+  const servicosDisponiveis = useMemo(() => {
+    if (!profissionalSelecionado) return [];
+    const ids = Array.isArray(profissionalSelecionado.servicosIds)
+      ? profissionalSelecionado.servicosIds.map(String)
+      : [];
+    return servicos.filter((s) => ids.includes(String(s.id)));
+  }, [servicos, profissionalSelecionado]);
+
   const antecedenciaProfissional = Number(profissionalSelecionado?.antecedenciaAgendamento || 0);
   const antecedenciaExibida = antecedenciaAtual || antecedenciaProfissional || Number(empresa.antecedenciaAgendamento || 12);
 
@@ -164,6 +173,18 @@ export default function AgendamentoCliente() {
     (s, item) => s + duracaoParaMinutos(item.duracao),
     0,
   );
+
+  useEffect(() => {
+    if (!profissionalSelecionado) {
+      setServicosSelecionados([]);
+      setHora("");
+      return;
+    }
+
+    const idsPermitidos = new Set(servicosDisponiveis.map((s) => String(s.id)));
+    setServicosSelecionados((lista) => lista.filter((id) => idsPermitidos.has(String(id))));
+    setHora("");
+  }, [profissionalId, profissionalSelecionado, servicosDisponiveis]);
 
   useEffect(() => {
     const salvo = localStorage.getItem(CHAVE_AGENDAMENTO_CLIENTE);
@@ -364,48 +385,6 @@ export default function AgendamentoCliente() {
               </div>
             ) : (
               <div className="space-y-5">
-                <div>
-                  <Label>Serviços</Label>
-                  <div className="mt-2 grid gap-3 md:grid-cols-2">
-                    {servicos.map((s) => {
-                      const selecionado = servicosSelecionados.includes(
-                        String(s.id),
-                      );
-                      return (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => alternarServico(String(s.id))}
-                          className={`rounded-2xl border p-4 text-left transition ${
-                            selecionado
-                              ? "border-amber-500 bg-amber-50 ring-2 ring-amber-200"
-                              : "border-slate-200 bg-slate-50 hover:border-amber-300"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="font-black text-slate-950">
-                                {s.nome}
-                              </p>
-                              <p className="mt-1 text-xs text-slate-500">
-                                Duração: {s.duracao || "30 min"}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-black text-amber-700">
-                                {dinheiro(s.valor)}
-                              </p>
-                              <p className="mt-1 text-xs font-bold text-slate-500">
-                                {selecionado ? "Selecionado" : "Selecionar"}
-                              </p>
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <Label>Profissional</Label>
@@ -436,6 +415,52 @@ export default function AgendamentoCliente() {
                       className="h-12 rounded-xl"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <Label>Serviços disponíveis para o profissional</Label>
+                  {!profissionalId ? (
+                    <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center text-slate-500">
+                      Escolha primeiro o profissional para visualizar os serviços que ele executa.
+                    </div>
+                  ) : servicosDisponiveis.length === 0 ? (
+                    <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center text-amber-700">
+                      Este profissional ainda não possui serviços habilitados. Configure os serviços na tela Profissionais.
+                    </div>
+                  ) : (
+                    <div className="mt-2 grid gap-3 md:grid-cols-2">
+                      {servicosDisponiveis.map((s) => {
+                        const selecionado = servicosSelecionados.includes(String(s.id));
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => alternarServico(String(s.id))}
+                            className={`rounded-2xl border p-4 text-left transition ${
+                              selecionado
+                                ? "border-amber-500 bg-amber-50 ring-2 ring-amber-200"
+                                : "border-slate-200 bg-slate-50 hover:border-amber-300"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-black text-slate-950">{s.nome}</p>
+                                <p className="mt-1 text-xs text-slate-500">
+                                  Duração: {s.duracao || "30 min"}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-black text-amber-700">{dinheiro(s.valor)}</p>
+                                <p className="mt-1 text-xs font-bold text-slate-500">
+                                  {selecionado ? "Selecionado" : "Selecionar"}
+                                </p>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <div className="rounded-2xl border bg-slate-50 p-4">

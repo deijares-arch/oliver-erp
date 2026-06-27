@@ -26,6 +26,7 @@ type DiaSemana = (typeof dias)[number];
 export default function Profissionais() {
   const {
     profissionais,
+    servicos,
     agendamentos,
     horariosTrabalho,
     salvarHorarioTrabalho,
@@ -47,6 +48,7 @@ export default function Profissionais() {
     antecedenciaAgendamento: 0,
     metaMensal: 0,
     especialidades: '',
+    servicosIds: [] as string[],
   });
 
   const profissionaisAtivos = profissionais.filter((p: any) => p.ativo ?? true);
@@ -100,6 +102,7 @@ export default function Profissionais() {
         antecedenciaAgendamento: Number(p.antecedenciaAgendamento || p.antecedencia_agendamento || 0),
         metaMensal: Number(p.metaMensal || 0),
         especialidades: p.especialidades || '',
+        servicosIds: Array.isArray(p.servicosIds) ? p.servicosIds.map(String) : [],
       });
       setEditando(id || null);
     } else {
@@ -111,6 +114,7 @@ export default function Profissionais() {
         antecedenciaAgendamento: 0,
         metaMensal: 0,
         especialidades: '',
+        servicosIds: [],
       });
       setEditando(null);
     }
@@ -124,6 +128,11 @@ export default function Profissionais() {
       return;
     }
 
+    if (!formData.servicosIds.length) {
+      alert('Selecione pelo menos um serviço que este profissional executa.');
+      return;
+    }
+
     if (editando) {
       atualizarProfissional(editando, { ...formData, ativo: true });
     } else {
@@ -131,6 +140,25 @@ export default function Profissionais() {
     }
 
     setModalAberto(false);
+  };
+
+  const alternarServicoProfissional = (servicoId: string) => {
+    setFormData((atual) => {
+      const lista = atual.servicosIds || [];
+      const existe = lista.includes(servicoId);
+      return {
+        ...atual,
+        servicosIds: existe ? lista.filter((id) => id !== servicoId) : [...lista, servicoId],
+      };
+    });
+  };
+
+  const nomesServicosDoProfissional = (p: any) => {
+    const ids = Array.isArray(p.servicosIds) ? p.servicosIds.map(String) : [];
+    return servicos
+      .filter((s: any) => ids.includes(String(s.id)))
+      .map((s: any) => s.nome)
+      .join(', ');
   };
 
   const stats = (id: string, comissao: number) => {
@@ -307,6 +335,13 @@ export default function Profissionais() {
                   {p.especialidades && (
                     <p className="mt-4 text-sm text-muted-foreground">{p.especialidades}</p>
                   )}
+
+                  <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm">
+                    <p className="mb-1 font-semibold text-primary">Serviços habilitados</p>
+                    <p className="text-muted-foreground">
+                      {nomesServicosDoProfissional(p) || 'Nenhum serviço vinculado.'}
+                    </p>
+                  </div>
 
                   <div className="mt-5 grid grid-cols-3 gap-3 text-sm">
                     <div className="rounded-lg bg-secondary/60 p-3">
@@ -593,6 +628,41 @@ export default function Profissionais() {
                   Se ficar em "Usar configuração da empresa", vale o prazo definido em Configurações.
                 </p>
               </div>
+            </div>
+
+            <div>
+              <Label>Serviços que este profissional executa</Label>
+              <div className="mt-2 grid max-h-56 grid-cols-1 gap-2 overflow-y-auto rounded-2xl border border-border bg-secondary/50 p-3 md:grid-cols-2">
+                {servicos.length === 0 ? (
+                  <p className="col-span-full text-sm text-muted-foreground">
+                    Nenhum serviço cadastrado. Cadastre os serviços na tela Serviços.
+                  </p>
+                ) : (
+                  servicos.map((servico: any) => {
+                    const selecionado = formData.servicosIds.includes(String(servico.id));
+                    return (
+                      <button
+                        key={servico.id}
+                        type="button"
+                        onClick={() => alternarServicoProfissional(String(servico.id))}
+                        className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+                          selecionado
+                            ? 'border-primary bg-primary/15 text-primary'
+                            : 'border-border bg-card hover:border-primary/50 hover:text-primary'
+                        }`}
+                      >
+                        <span className="font-semibold">{servico.nome}</span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {Number(servico.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} • {servico.duracao || '30 min'}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                No agendamento online, só aparecerão os serviços vinculados ao profissional escolhido.
+              </p>
             </div>
 
             <div>

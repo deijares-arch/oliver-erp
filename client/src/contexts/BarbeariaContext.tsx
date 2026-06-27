@@ -13,6 +13,9 @@ export interface Profissional {
   nome: string;
   funcao: string;
   comissao: number;
+  intervaloAgenda?: number;
+  antecedenciaAgendamento?: number;
+  servicosIds?: string[];
   ativo?: boolean;
   metaMensal?: number;
   especialidades?: string;

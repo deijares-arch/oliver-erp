@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Building2,
   CalendarClock,
+  Copy,
   Edit,
+  ExternalLink,
   Eye,
   Lock,
   Plus,
@@ -253,6 +255,40 @@ export default function AdminMaster() {
     }
   };
 
+  const origemSistema = typeof window !== "undefined" ? window.location.origin : "";
+
+  const linkPorSlug = (slug?: string, destino: "login" | "agendar" | "inicio" = "login") => {
+    const slugLimpo = slugify(slug || "");
+    if (!slugLimpo) return origemSistema || "/";
+    if (destino === "agendar") return `${origemSistema}/${slugLimpo}/agendar`;
+    if (destino === "inicio") return `${origemSistema}/${slugLimpo}/`;
+    return `${origemSistema}/${slugLimpo}/login`;
+  };
+
+  const abrirLink = (url: string) => {
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const copiarLink = async (url: string) => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      alert("Link copiado.");
+    } catch {
+      const campo = document.createElement("textarea");
+      campo.value = url;
+      campo.style.position = "fixed";
+      campo.style.opacity = "0";
+      document.body.appendChild(campo);
+      campo.focus();
+      campo.select();
+      document.execCommand("copy");
+      document.body.removeChild(campo);
+      alert("Link copiado.");
+    }
+  };
+
   if (!master) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#070b12] p-4 text-white">
@@ -286,6 +322,44 @@ export default function AdminMaster() {
             <Button onClick={abrirNovo}><Plus className="mr-2 h-4 w-4" />Nova empresa</Button>
             <Button variant="outline" onClick={carregar}><RefreshCcw className="mr-2 h-4 w-4" />Atualizar</Button>
             <Button variant="outline" onClick={() => { localStorage.removeItem("@sistema_saas_master"); setMaster(null); }}>Sair</Button>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+          <div className="mb-4 flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h2 className="text-xl font-black">Atalhos Rápidos</h2>
+              <p className="text-sm text-slate-400">Acesse ou copie os links principais do Oliver ERP.</p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-sm font-bold text-white">Cadastrar empresa</p>
+              <p className="mt-1 break-all text-xs text-slate-400">{`${origemSistema}/cadastrar-empresa`}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => abrirLink(`${origemSistema}/cadastrar-empresa`)}><ExternalLink className="mr-2 h-4 w-4" />Abrir</Button>
+                <Button size="sm" variant="outline" onClick={() => copiarLink(`${origemSistema}/cadastrar-empresa`)}><Copy className="mr-2 h-4 w-4" />Copiar</Button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-sm font-bold text-white">Agendamento público geral</p>
+              <p className="mt-1 break-all text-xs text-slate-400">{`${origemSistema}/agendar`}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => abrirLink(`${origemSistema}/agendar`)}><ExternalLink className="mr-2 h-4 w-4" />Abrir</Button>
+                <Button size="sm" variant="outline" onClick={() => copiarLink(`${origemSistema}/agendar`)}><Copy className="mr-2 h-4 w-4" />Copiar</Button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-sm font-bold text-white">Admin Master</p>
+              <p className="mt-1 break-all text-xs text-slate-400">{`${origemSistema}/admin`}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => abrirLink(`${origemSistema}/admin`)}><ExternalLink className="mr-2 h-4 w-4" />Abrir</Button>
+                <Button size="sm" variant="outline" onClick={() => copiarLink(`${origemSistema}/admin`)}><Copy className="mr-2 h-4 w-4" />Copiar</Button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -334,7 +408,17 @@ export default function AdminMaster() {
                         </div>
                       </div>
                     </td>
-                    <td className="p-4 text-slate-300">/{empresa.slug}/login</td>
+                    <td className="p-4 text-slate-300">
+                      <div className="max-w-[320px] break-all text-xs md:text-sm">{linkPorSlug(empresa.slug, "login")}</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => abrirLink(linkPorSlug(empresa.slug, "login"))}>
+                          <ExternalLink className="mr-1 h-3.5 w-3.5" />Abrir
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => copiarLink(linkPorSlug(empresa.slug, "login"))}>
+                          <Copy className="mr-1 h-3.5 w-3.5" />Copiar
+                        </Button>
+                      </div>
+                    </td>
                     <td className="p-4 text-center">{empresa.plano}</td>
                     <td className="p-4 text-center">
                       <div>{dataBR(empresa.ativaAte)}</div>
@@ -352,7 +436,8 @@ export default function AdminMaster() {
                           <Button size="sm" variant="outline" onClick={() => reativar(empresa)} title="Reativar"><Unlock className="h-4 w-4" /></Button>
                         )}
                         <Button size="sm" variant="outline" onClick={() => renovar(empresa, 30)} title="Renovar 30 dias"><RotateCw className="h-4 w-4" /></Button>
-                        <Button size="sm" onClick={() => (window.location.href = `/${empresa.slug}/login`)} title="Acessar"><Eye className="h-4 w-4" /></Button>
+                        <Button size="sm" onClick={() => abrirLink(linkPorSlug(empresa.slug, "login"))} title="Abrir login"><Eye className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="outline" onClick={() => copiarLink(linkPorSlug(empresa.slug, "login"))} title="Copiar link"><Copy className="h-4 w-4" /></Button>
                         <Button size="sm" variant="outline" onClick={() => inativar(empresa)} title="Inativar"><Trash2 className="h-4 w-4" /></Button>
                       </div>
                     </td>

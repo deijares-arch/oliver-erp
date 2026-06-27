@@ -1,7 +1,6 @@
 import type { Express } from "express";
 import fs from "node:fs/promises";
 import path from "node:path";
-import crypto from "node:crypto";
 import { EMPRESA_ID, execute, fromTime, getEmpresaContext, query, toDateBR, toDateISO, toTime } from "./db";
 
 function ok(res: any, data: any) {
@@ -78,6 +77,10 @@ function mapProfissional(row: any) {
     funcao: row.funcao || "Profissional",
     comissao: Number(row.comissao || 0),
     intervaloAgenda: Number(row.intervalo_agenda || row.intervaloAgenda || 30),
+    antecedenciaAgendamento: Number(row.antecedencia_agendamento || row.antecedenciaAgendamento || 0),
+    metaMensal: Number(row.meta_mensal || row.metaMensal || 0),
+    especialidades: row.especialidades || "",
+    servicosIds: Array.isArray(row.servicosIds) ? row.servicosIds.map(String) : [],
     ativo: Boolean(row.ativo),
   };
 }
@@ -166,8 +169,44 @@ function diaSemanaBR(dataISO: string) {
   return diasCalendario[data.getDay()];
 }
 
-async function ensureProfissionaisIntervaloAgendaColumn() {
+async function ensureProfissionaisColumns() {
   await execute("ALTER TABLE profissionais ADD COLUMN intervalo_agenda INT NOT NULL DEFAULT 30").catch(() => undefined);
+  await execute("ALTER TABLE profissionais ADD COLUMN antecedencia_agendamento INT NOT NULL DEFAULT 0").catch(() => undefined);
+  await execute("ALTER TABLE profissionais ADD COLUMN meta_mensal DECIMAL(10,2) NOT NULL DEFAULT 0.00").catch(() => undefined);
+  await execute("ALTER TABLE profissionais ADD COLUMN especialidades TEXT NULL").catch(() => undefined);
+  await ensureProfissionalServicosTable();
+}
+
+async function ensureProfissionalServicosTable() {
+  await execute(`
+    CREATE TABLE IF NOT EXISTS profissional_servicos (
+      empresa_id INT NOT NULL,
+      profissional_id INT NOT NULL,
+      servico_id INT NOT NULL,
+      criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (empresa_id, profissional_id, servico_id)
+    )
+  `).catch(() => undefined);
+}
+
+function normalizarServicosIds(valor: any): string[] {
+  if (Array.isArray(valor)) return valor.map(String).map((v) => v.trim()).filter(Boolean);
+  if (typeof valor === "string") {
+    const texto = valor.trim();
+    if (!texto) return [];
+    try {
+      const json = JSON.parse(texto);
+      if (Array.isArray(json)) return json.map(String).map((v) => v.trim()).filter(Boolean);
+    } catch {}
+    return texto.split(",").map((v) => v.trim()).filter(Boolean);
+  }
+  if (valor) return [String(valor)];
+  return [];
+}
+
+// Mantém compatibilidade com chamadas antigas do arquivo.
+async function ensureProfissionaisIntervaloAgendaColumn() {
+  await ensureProfissionaisColumns();
 }
 
 function intervaloAgendaValido(valor: any) {
@@ -176,6 +215,74 @@ function intervaloAgendaValido(valor: any) {
 }
 
 export function registerApiRoutes(app: Express) {
+
+  async function servicosIdsPorProfissional(profissionaisRows: any[]) {
+    await ensureProfissionalServicosTable();
+    const ids = profissionaisRows.map((p: any) => String(p.id)).filter(Boolean);
+    const mapa = new Map<string, string[]>();
+    for (const id of ids) mapa.set(id, []);
+    if (!ids.length) return mapa;
+
+    const rows = await query(
+      `SELECT profissional_id, servico_id
+         FROM profissional_servicos
+        WHERE empresa_id = ?
+          AND profissional_id IN (${ids.map(() => "?").join(",")})`,
+      [EMPRESA_ID, ...ids]
+    ).catch(() => []);
+
+    for (const r of rows) {
+      const profissionalId = String(r.profissional_id);
+      const lista = mapa.get(profissionalId) || [];
+      lista.push(String(r.servico_id));
+      mapa.set(profissionalId, lista);
+    }
+
+    return mapa;
+  }
+
+  async function mapProfissionaisComServicos(profissionaisRows: any[]) {
+    const mapa = await servicosIdsPorProfissional(profissionaisRows);
+    return profissionaisRows.map((p: any) => ({
+      ...mapProfissional({ ...p, servicosIds: mapa.get(String(p.id)) || [] }),
+    }));
+  }
+
+  async function salvarServicosDoProfissional(profissionalId: any, servicosIdsRecebidos: any) {
+    await ensureProfissionalServicosTable();
+    const servicosIds = [...new Set(normalizarServicosIds(servicosIdsRecebidos))];
+
+    await execute(
+      "DELETE FROM profissional_servicos WHERE empresa_id = ? AND profissional_id = ?",
+      [EMPRESA_ID, profissionalId]
+    );
+
+    for (const servicoId of servicosIds) {
+      await execute(
+        "INSERT IGNORE INTO profissional_servicos (empresa_id, profissional_id, servico_id) VALUES (?, ?, ?)",
+        [EMPRESA_ID, profissionalId, servicoId]
+      );
+    }
+
+    return servicosIds;
+  }
+
+  async function profissionalExecutaServicos(profissionalId: any, servicosIds: string[]) {
+    await ensureProfissionalServicosTable();
+    const ids = [...new Set(servicosIds.map(String).filter(Boolean))];
+    if (!ids.length) return false;
+
+    const rows = await query(
+      `SELECT servico_id
+         FROM profissional_servicos
+        WHERE empresa_id = ?
+          AND profissional_id = ?
+          AND servico_id IN (${ids.map(() => "?").join(",")})`,
+      [EMPRESA_ID, profissionalId, ...ids]
+    ).catch(() => []);
+
+    return rows.length === ids.length;
+  }
 
   async function garantirHorariosProfissional(profissionalId: any) {
     await ensureProfissionaisIntervaloAgendaColumn();
@@ -472,7 +579,15 @@ export function registerApiRoutes(app: Express) {
       const slugBase = slugCadastroEmpresa(empresaNome);
       const slug = await slugEmpresaDisponivel(slugBase);
 
-     
+      const emailJaUsado = await query(
+        `SELECT u.id FROM usuarios u WHERE u.email = ? LIMIT 1`,
+        [responsavelEmail]
+      ).catch(() => []);
+
+      if (emailJaUsado[0]) {
+        throw new Error("Este e-mail já está cadastrado em outra empresa.");
+      }
+
       const observacao = [
         "Cadastro solicitado pela tela pública de teste grátis.",
         segmento ? `Segmento: ${segmento}` : "",
@@ -497,7 +612,8 @@ export function registerApiRoutes(app: Express) {
         ]
       );
 
-  
+      await ensureAuthTables();
+
       await execute(
         `INSERT INTO usuarios (empresa_id, nome, email, senha, telefone, perfil, ativo, status)
          VALUES (?, ?, ?, ?, ?, 'Administrador', 1, 'ATIVO')`,
@@ -524,216 +640,6 @@ export function registerApiRoutes(app: Express) {
         plano: "Teste",
         diasTeste: 7,
       });
-    } catch (error) {
-      fail(res, error);
-    }
-  });
-
-
-  async function ensureRecuperacaoSenhaTable() {
-    await execute(`
-      CREATE TABLE IF NOT EXISTS recuperacao_senha (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        empresa_id INT NOT NULL,
-        usuario_id INT NOT NULL,
-        token VARCHAR(255) NOT NULL,
-        expira_em DATETIME NOT NULL,
-        usado TINYINT(1) NOT NULL DEFAULT 0,
-        criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_recuperacao_token (token),
-        INDEX idx_recuperacao_usuario (usuario_id),
-        INDEX idx_recuperacao_empresa (empresa_id)
-      )
-    `).catch(() => undefined);
-  }
-
-  function origemDaRequisicao(req: any) {
-    const host = String(req.headers["x-forwarded-host"] || req.headers.host || "");
-    const proto = String(req.headers["x-forwarded-proto"] || "http");
-    return host ? `${proto}://${host}` : "";
-  }
-
-  async function enviarEmailRecuperacaoSenha(destino: string, nome: string, link: string) {
-    const assunto = "Redefinição de senha - Oliver ERP";
-
-    const html = `
-      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827">
-        <h2 style="color:#b8860b">Redefinição de senha - Oliver ERP</h2>
-        <p>Olá, <strong>${nome || "usuário"}</strong>.</p>
-        <p>Recebemos uma solicitação para redefinir sua senha.</p>
-        <p>
-          <a href="${link}" style="display:inline-block;background:#d4af37;color:#000;font-weight:bold;text-decoration:none;padding:12px 18px;border-radius:10px">
-            Criar nova senha
-          </a>
-        </p>
-        <p>Este link expira em <strong>30 minutos</strong>.</p>
-        <p>Se você não solicitou esta alteração, ignore este e-mail.</p>
-        <p style="color:#6b7280;font-size:12px">Oliver ERP - Gestão Inteligente para Empresas</p>
-      </div>
-    `;
-
-    const texto = [
-      `Olá, ${nome || "usuário"}.`,
-      "",
-      "Recebemos uma solicitação para redefinir sua senha.",
-      "",
-      "Acesse o link abaixo para criar uma nova senha:",
-      link,
-      "",
-      "Este link expira em 30 minutos.",
-      "",
-      "Se você não solicitou esta alteração, ignore este e-mail.",
-      "",
-      "Oliver ERP - Gestão Inteligente para Empresas",
-    ].join("\\n");
-
-    // Envio profissional usando Resend.
-    // Configure no Railway:
-    // RESEND_API_KEY=re_xxxxx
-    // EMAIL_FROM=Oliver ERP <contato@seudominio.com>
-    if (process.env.RESEND_API_KEY) {
-      const resposta = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: process.env.EMAIL_FROM || "Oliver ERP <onboarding@resend.dev>",
-          to: [destino],
-          subject: assunto,
-          html,
-          text: texto,
-        }),
-      });
-
-      if (!resposta.ok) {
-        const detalhe = await resposta.text().catch(() => "");
-        throw new Error(`Erro ao enviar e-mail: ${detalhe || resposta.statusText}`);
-      }
-
-      return { enviado: true };
-    }
-
-    console.log("Link de recuperação de senha:", link);
-    return { enviado: false, previewLink: link };
-  }
-
-
-  app.post("/api/auth/esqueci-senha", async (req, res) => {
-    try {
-      await ensureAuthTables();
-      await ensureRecuperacaoSenhaTable();
-
-      const b = req.body || {};
-      const email = String(b.email || "").trim().toLowerCase();
-      const empresaSlug = String(b.empresaSlug || b.slug || "").trim().toLowerCase();
-
-      if (!email) throw new Error("Informe o e-mail.");
-      if (!empresaSlug) throw new Error("Empresa não informada.");
-
-      const rows = await query(
-        `SELECT u.id AS usuario_id,
-                u.nome,
-                u.email,
-                u.empresa_id,
-                e.slug
-         FROM usuarios u
-         INNER JOIN empresas e ON e.id = u.empresa_id
-         WHERE e.slug = ?
-           AND u.email = ?
-           AND u.ativo = 1
-           AND u.status = 'ATIVO'
-         LIMIT 1`,
-        [empresaSlug, email]
-      );
-
-      // Resposta genérica para não expor se o e-mail existe ou não.
-      if (!rows[0]) {
-        ok(res, { enviado: true });
-        return;
-      }
-
-      const usuario = rows[0];
-      const token = crypto.randomBytes(32).toString("hex");
-
-      await execute(
-        "UPDATE recuperacao_senha SET usado = 1 WHERE empresa_id = ? AND usuario_id = ? AND usado = 0",
-        [usuario.empresa_id, usuario.usuario_id]
-      ).catch(() => undefined);
-
-      await execute(
-        `INSERT INTO recuperacao_senha
-         (empresa_id, usuario_id, token, expira_em, usado)
-         VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE), 0)`,
-        [usuario.empresa_id, usuario.usuario_id, token]
-      );
-
-      const origem = origemDaRequisicao(req);
-      const link = `${origem}/${usuario.slug}/redefinir-senha?token=${token}`;
-
-      const envio = await enviarEmailRecuperacaoSenha(usuario.email, usuario.nome, link);
-
-      ok(res, {
-        enviado: true,
-        previewLink: envio.previewLink || "",
-      });
-    } catch (error) {
-      fail(res, error);
-    }
-  });
-
-  app.post("/api/auth/redefinir-senha", async (req, res) => {
-    try {
-      await ensureAuthTables();
-      await ensureRecuperacaoSenhaTable();
-
-      const b = req.body || {};
-      const token = String(b.token || "").trim();
-      const senha = String(b.senha || "").trim();
-      const confirmarSenha = String(b.confirmarSenha || "").trim();
-      const empresaSlug = String(b.empresaSlug || b.slug || "").trim().toLowerCase();
-
-      if (!empresaSlug) throw new Error("Empresa não informada.");
-      if (!token) throw new Error("Token inválido.");
-      if (!senha) throw new Error("Informe a nova senha.");
-      if (senha.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres.");
-      if (senha !== confirmarSenha) throw new Error("As senhas não conferem.");
-
-      const rows = await query(
-        `SELECT r.id,
-                r.usuario_id,
-                r.empresa_id,
-                u.email,
-                e.slug
-         FROM recuperacao_senha r
-         INNER JOIN usuarios u ON u.id = r.usuario_id AND u.empresa_id = r.empresa_id
-         INNER JOIN empresas e ON e.id = r.empresa_id
-         WHERE r.token = ?
-           AND r.usado = 0
-           AND r.expira_em >= NOW()
-           AND e.slug = ?
-         LIMIT 1`,
-        [token, empresaSlug]
-      );
-
-      const recuperacao = rows[0];
-      if (!recuperacao) {
-        res.status(400).json({ ok: false, error: "Link inválido ou expirado." });
-        return;
-      }
-
-      await execute(
-        "UPDATE usuarios SET senha = ? WHERE id = ? AND empresa_id = ?",
-        [senha, recuperacao.usuario_id, recuperacao.empresa_id]
-      );
-
-      await execute(
-        "UPDATE recuperacao_senha SET usado = 1 WHERE id = ?",
-        [recuperacao.id]
-      );
-
-      ok(res, { atualizado: true });
     } catch (error) {
       fail(res, error);
     }
@@ -780,10 +686,18 @@ export function registerApiRoutes(app: Express) {
       )
     `).catch(() => undefined);
 
-    // Não criar usuários automaticamente aqui.
-    // O administrador master fica apenas na tabela administradores_master.
-    // Cada empresa terá somente os usuários próprios dela.
-}
+    await execute(
+      `INSERT IGNORE INTO usuarios (empresa_id, nome, email, senha, perfil, ativo, status)
+       VALUES (?, 'Administrador', 'admin@sistema.com', 'admin123', 'Administrador', 1, 'ATIVO')`,
+      [EMPRESA_ID]
+    ).catch(() => undefined);
+
+    await execute(
+      `INSERT IGNORE INTO usuarios (empresa_id, nome, email, senha, perfil, ativo, status)
+       VALUES (?, 'DEIJARES OLIVEIRA', 'deijares@gmail.com', '130312', 'Administrador', 1, 'ATIVO')`,
+      [EMPRESA_ID]
+    ).catch(() => undefined);
+  }
 
   function normalizarPermissoes(valor: any): string[] {
     if (Array.isArray(valor)) return valor.map(String).filter(Boolean);
@@ -1264,7 +1178,7 @@ export function registerApiRoutes(app: Express) {
       const [empresaRows, servicosRows, profissionaisRows] = await Promise.all([
         query("SELECT nome, marca, telefone, logo_empresa, logo_menu FROM empresas WHERE id = ? LIMIT 1", [EMPRESA_ID]).catch(() => []),
         query("SELECT id, nome, valor, duracao, categoria, comissao, agendamento_online FROM servicos WHERE empresa_id = ? AND ativo = 1 AND agendamento_online = 1 ORDER BY nome", [EMPRESA_ID]),
-        query("SELECT id, nome, funcao, comissao, intervalo_agenda FROM profissionais WHERE empresa_id = ? AND ativo = 1 ORDER BY nome", [EMPRESA_ID]),
+        query("SELECT id, nome, funcao, comissao, intervalo_agenda, antecedencia_agendamento, meta_mensal, especialidades FROM profissionais WHERE empresa_id = ? AND ativo = 1 ORDER BY nome", [EMPRESA_ID]),
       ]);
 
       const empresa = empresaRows[0] || {};
@@ -1277,7 +1191,7 @@ export function registerApiRoutes(app: Express) {
           logoMenu: empresa.logo_menu || empresa.logo_empresa || "",
         },
         servicos: servicosRows.map(mapServico),
-        profissionais: profissionaisRows.map(mapProfissional),
+        profissionais: await mapProfissionaisComServicos(profissionaisRows),
       });
     } catch (error) {
       fail(res, error);
@@ -1299,6 +1213,9 @@ export function registerApiRoutes(app: Express) {
 
       const servicosRows = await obterServicosPorIds(servicosIds, true);
       if (servicosRows.length !== servicosIds.length) throw new Error("Um ou mais serviços não estão disponíveis para agendamento online.");
+      if (!(await profissionalExecutaServicos(profissionalId, servicosIds))) {
+        throw new Error("Este profissional não executa um ou mais serviços selecionados.");
+      }
 
       const duracao = servicosRows.reduce((total: number, s: any) => total + duracaoServicoPublica(s.duracao), 0) || 30;
       const diaSemana = diaSemanaBR(dataISO);
@@ -1316,7 +1233,7 @@ export function registerApiRoutes(app: Express) {
       }
 
       const profissionalRows = await query(
-        "SELECT intervalo_agenda FROM profissionais WHERE empresa_id = ? AND id = ? AND ativo = 1 LIMIT 1",
+        "SELECT intervalo_agenda, antecedencia_agendamento FROM profissionais WHERE empresa_id = ? AND id = ? AND ativo = 1 LIMIT 1",
         [EMPRESA_ID, profissionalId]
       ).catch(() => []);
       const intervaloAgenda = intervaloAgendaValido(profissionalRows[0]?.intervalo_agenda);
@@ -1401,6 +1318,9 @@ export function registerApiRoutes(app: Express) {
 
       const servicosRows = await obterServicosPorIds(servicosIds, true);
       if (servicosRows.length !== servicosIds.length) throw new Error("Um ou mais serviços não estão disponíveis para agendamento online.");
+      if (!(await profissionalExecutaServicos(profissionalId, servicosIds))) {
+        throw new Error("Este profissional não executa um ou mais serviços selecionados.");
+      }
 
       const profissionalRows = await query(
         "SELECT * FROM profissionais WHERE empresa_id = ? AND id = ? AND ativo = 1 LIMIT 1",
@@ -1874,7 +1794,7 @@ export function registerApiRoutes(app: Express) {
 
       ok(res, {
         clientes: clientes.map(mapCliente),
-        profissionais: profissionais.map(mapProfissional),
+        profissionais: await mapProfissionaisComServicos(profissionais),
         servicos: servicos.map(mapServico),
         agendamentos: agendamentos.map(mapAgendamento),
         filaAtendimento: filaAtendimento.map(mapFila),
@@ -1915,25 +1835,39 @@ export function registerApiRoutes(app: Express) {
 
   app.post("/api/profissionais", async (req, res) => {
     try {
-      await ensureProfissionaisIntervaloAgendaColumn();
+      await ensureProfissionaisColumns();
       const b = req.body || {};
       const intervaloAgenda = intervaloAgendaValido(b.intervaloAgenda || b.intervalo_agenda);
-      const result = await execute("INSERT INTO profissionais (empresa_id, nome, funcao, comissao, intervalo_agenda) VALUES (?, ?, ?, ?, ?)", [EMPRESA_ID, b.nome || "", b.funcao || "Profissional", Number(b.comissao || 0), intervaloAgenda]);
+      const antecedenciaAgendamento = Number(b.antecedenciaAgendamento || b.antecedencia_agendamento || 0);
+      const metaMensal = Number(b.metaMensal || b.meta_mensal || 0);
+      const especialidades = String(b.especialidades || "");
+      const result = await execute(
+        "INSERT INTO profissionais (empresa_id, nome, funcao, comissao, intervalo_agenda, antecedencia_agendamento, meta_mensal, especialidades) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [EMPRESA_ID, b.nome || "", b.funcao || "Profissional", Number(b.comissao || 0), intervaloAgenda, antecedenciaAgendamento, metaMensal, especialidades]
+      );
+      await salvarServicosDoProfissional(result.insertId, b.servicosIds || b.servicos_ids || []);
       await garantirHorariosProfissional(result.insertId);
-      const rows = await query("SELECT * FROM profissionais WHERE id = ?", [result.insertId]);
-      ok(res, mapProfissional(rows[0]));
+      const rows = await query("SELECT * FROM profissionais WHERE id = ? AND empresa_id = ?", [result.insertId, EMPRESA_ID]);
+      ok(res, (await mapProfissionaisComServicos(rows))[0]);
     } catch (error) { fail(res, error); }
   });
 
   app.put("/api/profissionais/:id", async (req, res) => {
     try {
-      await ensureProfissionaisIntervaloAgendaColumn();
+      await ensureProfissionaisColumns();
       const b = req.body || {};
       const intervaloAgenda = intervaloAgendaValido(b.intervaloAgenda || b.intervalo_agenda);
-      await execute("UPDATE profissionais SET nome = ?, funcao = ?, comissao = ?, intervalo_agenda = ? WHERE id = ? AND empresa_id = ?", [b.nome || "", b.funcao || "Profissional", Number(b.comissao || 0), intervaloAgenda, req.params.id, EMPRESA_ID]);
+      const antecedenciaAgendamento = Number(b.antecedenciaAgendamento || b.antecedencia_agendamento || 0);
+      const metaMensal = Number(b.metaMensal || b.meta_mensal || 0);
+      const especialidades = String(b.especialidades || "");
+      await execute(
+        "UPDATE profissionais SET nome = ?, funcao = ?, comissao = ?, intervalo_agenda = ?, antecedencia_agendamento = ?, meta_mensal = ?, especialidades = ? WHERE id = ? AND empresa_id = ?",
+        [b.nome || "", b.funcao || "Profissional", Number(b.comissao || 0), intervaloAgenda, antecedenciaAgendamento, metaMensal, especialidades, req.params.id, EMPRESA_ID]
+      );
+      await salvarServicosDoProfissional(req.params.id, b.servicosIds || b.servicos_ids || []);
       await garantirHorariosProfissional(req.params.id);
-      const rows = await query("SELECT * FROM profissionais WHERE id = ?", [req.params.id]);
-      ok(res, mapProfissional(rows[0]));
+      const rows = await query("SELECT * FROM profissionais WHERE id = ? AND empresa_id = ?", [req.params.id, EMPRESA_ID]);
+      ok(res, (await mapProfissionaisComServicos(rows))[0]);
     } catch (error) { fail(res, error); }
   });
 
@@ -1947,6 +1881,11 @@ export function registerApiRoutes(app: Express) {
     if (!profissional[0]) {
       throw new Error("Profissional não encontrado.");
     }
+
+    await execute(
+      "DELETE FROM profissional_servicos WHERE empresa_id = ? AND profissional_id = ?",
+      [EMPRESA_ID, req.params.id]
+    ).catch(() => undefined);
 
     await execute(
       "UPDATE profissionais SET ativo = 0 WHERE id = ? AND empresa_id = ?",

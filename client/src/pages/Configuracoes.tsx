@@ -53,7 +53,7 @@ const empresaPadrao: Empresa = {
   logoMenu: '/logo-menu.png',
   fundoLogin: '/background-login.jpg',
   regraComissao: 'bruto',
-  antecedenciaAgendamento: 12,
+  antecedenciaAgendamento: 0,
 };
 
 function slugDaRotaAtual() {
@@ -138,7 +138,7 @@ export default function Configuracoes() {
             logoMenu: d.logoMenu || local.logoMenu || d.logoEmpresa || local.logoEmpresa || '/logo-menu.png',
             fundoLogin: d.fundoLogin || local.fundoLogin || '/background-login.jpg',
             regraComissao: d.regraComissao || d.comissaoSobre || local.regraComissao || 'bruto',
-            antecedenciaAgendamento: Number(d.antecedenciaAgendamento ?? d.antecedencia_agendamento ?? local.antecedenciaAgendamento ?? 12),
+            antecedenciaAgendamento: Number(d.antecedenciaAgendamento ?? d.antecedencia_agendamento ?? local.antecedenciaAgendamento ?? 0),
           });
         } else {
           setEmpresa({ ...empresaPadrao, ...local });
@@ -352,7 +352,7 @@ export default function Configuracoes() {
               <div>
                 <Label>Antecedência mínima padrão</Label>
                 <Select
-                  value={String(empresa.antecedenciaAgendamento ?? 12)}
+                  value={String(empresa.antecedenciaAgendamento ?? 0)}
                   onValueChange={(value) =>
                     setEmpresa({ ...empresa, antecedenciaAgendamento: Number(value) })
                   }
