@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useBarbearia } from "@/contexts/BarbeariaContext";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   AlertCircle,
   Calendar,
@@ -230,6 +231,8 @@ function removerServicosSalvosDaObservacao(observacao: string | undefined) {
 
 export default function Agendamentos() {
   const contexto = useBarbearia() as any;
+  const { usuario, pode } = useAuth();
+  const agendaSomenteMinha = Boolean(usuario && usuario.perfil !== "Administrador" && pode("agenda.ver_apenas_minha") && usuario.profissionalId);
   const {
     clientes,
     profissionais,
@@ -345,6 +348,12 @@ export default function Agendamentos() {
       .catch(() => setHorariosTrabalho([]));
   }, []);
 
+  useEffect(() => {
+    if (agendaSomenteMinha && usuario?.profissionalId) {
+      setProfissionalGradeId(String(usuario.profissionalId));
+    }
+  }, [agendaSomenteMinha, usuario?.profissionalId]);
+
   const totalServicos = servicosEscolhidos.reduce(
     (s, item) => s + Number(item.valor || 0),
     0,
@@ -398,9 +407,13 @@ export default function Agendamentos() {
   const valorLiquidoPagamento = Number(
     (totalPagamento - valorTaxaPagamento).toFixed(2),
   );
-  const agendamentosAtuais = agendamentosServidor.length
+  const agendamentosBase = agendamentosServidor.length
     ? agendamentosServidor
     : agendamentos;
+
+  const agendamentosAtuais = agendaSomenteMinha
+    ? agendamentosBase.filter((a: any) => String(a.profissionalId) === String(usuario?.profissionalId))
+    : agendamentosBase;
 
   const agendamentosOrdenados = useMemo(() => {
     return [...agendamentosAtuais].sort((a, b) => {
@@ -1195,10 +1208,14 @@ export default function Agendamentos() {
     );
   };
 
+  const profissionaisVisiveis = agendaSomenteMinha
+    ? profissionais.filter((p: any) => String(p.id) === String(usuario?.profissionalId))
+    : profissionais;
+
   const profissionaisGrade =
     profissionalGradeId === "todos"
-      ? profissionais
-      : profissionais.filter(
+      ? profissionaisVisiveis
+      : profissionaisVisiveis.filter(
           (p: any) => String(p.id) === String(profissionalGradeId),
         );
 
@@ -1242,10 +1259,10 @@ export default function Agendamentos() {
                   <SelectValue placeholder="Todos os profissionais" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="todos">Todos os profissionais</SelectItem>
-                  {profissionais.map((p: any) => (
+                  {!agendaSomenteMinha && <SelectItem value="todos">Todos os profissionais</SelectItem>}
+                  {profissionaisVisiveis.map((p: any) => (
                     <SelectItem key={p.id} value={String(p.id)}>
-                      {p.nome}
+                      {p.apelido || p.nome}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1458,7 +1475,7 @@ export default function Agendamentos() {
                 <SelectContent>
                   {profissionais.map((p: any) => (
                     <SelectItem key={p.id} value={String(p.id)}>
-                      {p.nome}
+                      {p.apelido || p.nome}
                     </SelectItem>
                   ))}
                 </SelectContent>

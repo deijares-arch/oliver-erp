@@ -11,6 +11,10 @@ export interface Cliente {
 export interface Profissional {
   id: string;
   nome: string;
+  apelido?: string;
+  nomePublico?: string;
+  usuarioId?: string;
+  usuarioNome?: string;
   funcao: string;
   comissao: number;
   intervaloAgenda?: number;

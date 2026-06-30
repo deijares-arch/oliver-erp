@@ -12,8 +12,8 @@ export function PageShell({
   children: ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-background pb-24">
-      <div className="sticky top-0 z-10 border-b border-border bg-background/90 backdrop-blur-xl">
+    <div className="min-h-screen bg-slate-50 pb-24 text-slate-950 dark:bg-[#070b12] dark:text-slate-100">
+      <div className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/90 backdrop-blur-xl dark:border-white/10 dark:bg-[#070b12]/90">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 pb-4 pt-16 md:flex-row md:items-center md:justify-between md:px-8 md:py-5">
           <div className="min-w-0">
             <h1 className="truncate text-2xl font-black tracking-tight md:text-3xl">{title}</h1>
@@ -48,7 +48,7 @@ export function SummaryCard({
   }[tone];
 
   return (
-    <div className={`rounded-2xl border bg-card p-4 shadow-sm md:p-5 ${toneClass}`}>
+    <div className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5 dark:border-white/10 dark:bg-card ${toneClass}`}>
       <div className="mb-2 flex items-center gap-2">{icon}<p className="text-sm font-medium opacity-90">{title}</p></div>
       <p className="text-2xl font-black md:text-3xl">{value}</p>
     </div>

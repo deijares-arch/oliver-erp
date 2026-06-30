@@ -27,12 +27,35 @@ function primeiroSegmento(url: string) {
   return reservados.has(seg) ? "" : seg;
 }
 
+function hostSemPorta(req: express.Request) {
+  return String(req.headers["x-forwarded-host"] || req.headers.host || "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase()
+    .replace(/:\d+$/, "");
+}
+
+function slugDoSubdominio(req: express.Request) {
+  const host = hostSemPorta(req);
+  if (!host || host === "localhost" || /^127\./.test(host)) return "";
+
+  const partes = host.split(".").filter(Boolean);
+  if (partes.length < 3) return "";
+
+  const primeiro = partes[0];
+  const reservados = new Set(["www", "app", "api", "master", "admin", "admin-master"]);
+  return reservados.has(primeiro) ? "" : primeiro;
+}
+
 function rotaLivreSemEmpresa(req: express.Request) {
   const url = String(req.originalUrl || "");
 
+  // Em empresa.olivererp.com, /login e / devem carregar o contexto da empresa.
+  const temSubdominioEmpresa = Boolean(slugDoSubdominio(req));
+
   return (
-    url === "/" ||
-    url === "/login" ||
+    (!temSubdominioEmpresa && url === "/") ||
+    (!temSubdominioEmpresa && url === "/login") ||
     url === "/cadastrar-empresa" ||
     url === "/empresa-nao-informada" ||
     url.startsWith("/api/publico/cadastrar-empresa") ||
@@ -56,7 +79,8 @@ async function resolverEmpresa(req: express.Request) {
   }
 
   const slug = String(
-    body.empresaSlug ||
+    slugDoSubdominio(req) ||
+      body.empresaSlug ||
       body.slug ||
       queryParams.empresaSlug ||
       queryParams.slug ||

@@ -19,6 +19,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+const BOTAO_PRIMARIO =
+  "border border-[#f6b21a]/40 bg-[#f6b21a] text-[#070b12] font-bold hover:bg-[#ffd76a] hover:text-[#070b12]";
+
+const BOTAO_SECUNDARIO =
+  "border border-white/15 bg-white/[0.06] text-slate-100 hover:bg-white/12 hover:text-[#f6b21a]";
+
+const BOTAO_PERIGO =
+  "border border-red-400/30 bg-red-500/10 text-red-100 hover:bg-red-500/20 hover:text-red-100";
+
+const CAMPO_ESCURO =
+  "border-white/10 bg-[#111827] text-white placeholder:text-slate-500 focus:border-[#f6b21a]";
+
+const SELECT_ESCURO =
+  "w-full rounded-xl border border-white/10 bg-[#111827] p-3 text-white focus:border-[#f6b21a] focus:outline-none";
+
+
+
 async function api(path: string, options: RequestInit = {}) {
   const r = await fetch(path, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
@@ -99,13 +116,13 @@ function dataBR(data?: string) {
 }
 
 function statusEmpresa(e: Empresa) {
-  if (!e.ativo) return { texto: "Bloqueada", classe: "bg-red-500/15 text-red-200 border-red-400/30" };
+  if (!e.ativo) return { texto: "Bloqueada", classe: "bg-red-500/15 text-red-100 border-red-400/30" };
   if (e.diasRestantes !== null && e.diasRestantes !== undefined) {
-    if (e.diasRestantes < 0) return { texto: "Vencida", classe: "bg-red-500/15 text-red-200 border-red-400/30" };
-    if (e.diasRestantes <= 3) return { texto: `Vence em ${e.diasRestantes} dia(s)`, classe: "bg-orange-500/15 text-orange-200 border-orange-400/30" };
-    if (e.diasRestantes <= Number(e.diasAviso || 7)) return { texto: `Vence em ${e.diasRestantes} dia(s)`, classe: "bg-amber-500/15 text-amber-200 border-amber-400/30" };
+    if (e.diasRestantes < 0) return { texto: "Vencida", classe: "bg-red-500/15 text-red-100 border-red-400/30" };
+    if (e.diasRestantes <= 3) return { texto: `Vence em ${e.diasRestantes} dia(s)`, classe: "bg-orange-500/20 text-orange-100 border-orange-400/40" };
+    if (e.diasRestantes <= Number(e.diasAviso || 7)) return { texto: `Vence em ${e.diasRestantes} dia(s)`, classe: "bg-amber-500/20 text-amber-100 border-amber-400/40" };
   }
-  return { texto: "Ativa", classe: "bg-emerald-500/15 text-emerald-200 border-emerald-400/30" };
+  return { texto: "Ativa", classe: "bg-emerald-500/20 text-emerald-100 border-emerald-400/40" };
 }
 
 function arquivoImagemParaDataUrl(file: File): Promise<string> {
@@ -301,9 +318,9 @@ export default function AdminMaster() {
             </div>
           </div>
           <div className="space-y-3">
-            <div><Label>E-mail</Label><Input value={login.email} onChange={(e) => setLogin({ ...login, email: e.target.value })} /></div>
-            <div><Label>Senha</Label><Input type="password" value={login.senha} onChange={(e) => setLogin({ ...login, senha: e.target.value })} /></div>
-            <Button className="w-full" type="submit">Entrar</Button>
+            <div><Label>E-mail</Label><Input className={CAMPO_ESCURO} value={login.email} onChange={(e) => setLogin({ ...login, email: e.target.value })} /></div>
+            <div><Label>Senha</Label><Input className={CAMPO_ESCURO} type="password" value={login.senha} onChange={(e) => setLogin({ ...login, senha: e.target.value })} /></div>
+            <Button className={`w-full ${BOTAO_PRIMARIO}`} type="submit">Entrar</Button>
           </div>
         </form>
       </div>
@@ -319,9 +336,9 @@ export default function AdminMaster() {
             <p className="text-slate-300">Cadastre empresas, controle vencimentos, bloqueios e acessos.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={abrirNovo}><Plus className="mr-2 h-4 w-4" />Nova empresa</Button>
-            <Button variant="outline" onClick={carregar}><RefreshCcw className="mr-2 h-4 w-4" />Atualizar</Button>
-            <Button variant="outline" onClick={() => { localStorage.removeItem("@sistema_saas_master"); setMaster(null); }}>Sair</Button>
+            <Button className={BOTAO_PRIMARIO} onClick={abrirNovo}><Plus className="mr-2 h-4 w-4" />Nova empresa</Button>
+            <Button className={BOTAO_SECUNDARIO} variant="outline" onClick={carregar}><RefreshCcw className="mr-2 h-4 w-4" />Atualizar</Button>
+            <Button className={BOTAO_PERIGO} variant="outline" onClick={() => { localStorage.removeItem("@sistema_saas_master"); setMaster(null); }}>Sair</Button>
           </div>
         </div>
 
@@ -338,8 +355,8 @@ export default function AdminMaster() {
               <p className="text-sm font-bold text-white">Cadastrar empresa</p>
               <p className="mt-1 break-all text-xs text-slate-400">{`${origemSistema}/cadastrar-empresa`}</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => abrirLink(`${origemSistema}/cadastrar-empresa`)}><ExternalLink className="mr-2 h-4 w-4" />Abrir</Button>
-                <Button size="sm" variant="outline" onClick={() => copiarLink(`${origemSistema}/cadastrar-empresa`)}><Copy className="mr-2 h-4 w-4" />Copiar</Button>
+                <Button className={BOTAO_PRIMARIO} size="sm" onClick={() => abrirLink(`${origemSistema}/cadastrar-empresa`)}><ExternalLink className="mr-2 h-4 w-4" />Abrir</Button>
+                <Button className={BOTAO_SECUNDARIO} size="sm" variant="outline" onClick={() => copiarLink(`${origemSistema}/cadastrar-empresa`)}><Copy className="mr-2 h-4 w-4" />Copiar</Button>
               </div>
             </div>
 
@@ -347,8 +364,8 @@ export default function AdminMaster() {
               <p className="text-sm font-bold text-white">Agendamento público geral</p>
               <p className="mt-1 break-all text-xs text-slate-400">{`${origemSistema}/agendar`}</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => abrirLink(`${origemSistema}/agendar`)}><ExternalLink className="mr-2 h-4 w-4" />Abrir</Button>
-                <Button size="sm" variant="outline" onClick={() => copiarLink(`${origemSistema}/agendar`)}><Copy className="mr-2 h-4 w-4" />Copiar</Button>
+                <Button className={BOTAO_PRIMARIO} size="sm" onClick={() => abrirLink(`${origemSistema}/agendar`)}><ExternalLink className="mr-2 h-4 w-4" />Abrir</Button>
+                <Button className={BOTAO_SECUNDARIO} size="sm" variant="outline" onClick={() => copiarLink(`${origemSistema}/agendar`)}><Copy className="mr-2 h-4 w-4" />Copiar</Button>
               </div>
             </div>
 
@@ -356,8 +373,8 @@ export default function AdminMaster() {
               <p className="text-sm font-bold text-white">Admin Master</p>
               <p className="mt-1 break-all text-xs text-slate-400">{`${origemSistema}/admin`}</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => abrirLink(`${origemSistema}/admin`)}><ExternalLink className="mr-2 h-4 w-4" />Abrir</Button>
-                <Button size="sm" variant="outline" onClick={() => copiarLink(`${origemSistema}/admin`)}><Copy className="mr-2 h-4 w-4" />Copiar</Button>
+                <Button className={BOTAO_PRIMARIO} size="sm" onClick={() => abrirLink(`${origemSistema}/admin`)}><ExternalLink className="mr-2 h-4 w-4" />Abrir</Button>
+                <Button className={BOTAO_SECUNDARIO} size="sm" variant="outline" onClick={() => copiarLink(`${origemSistema}/admin`)}><Copy className="mr-2 h-4 w-4" />Copiar</Button>
               </div>
             </div>
           </div>
@@ -380,7 +397,7 @@ export default function AdminMaster() {
 
         <div className="overflow-x-auto rounded-3xl border border-white/10 bg-white/[0.04]">
           <table className="w-full min-w-[1100px] text-sm">
-            <thead className="bg-white/[0.06]">
+            <thead className="bg-white/[0.08] text-slate-100">
               <tr>
                 <th className="p-4 text-left">Empresa</th>
                 <th className="p-4 text-left">URL</th>
@@ -396,7 +413,7 @@ export default function AdminMaster() {
               {empresas.map((empresa) => {
                 const status = statusEmpresa(empresa);
                 return (
-                  <tr key={empresa.id} className="border-t border-white/10 align-middle">
+                  <tr key={empresa.id} className="border-t border-white/10 align-middle text-slate-100 hover:bg-white/[0.03]">
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl border border-white/10 bg-white/5">
@@ -411,10 +428,10 @@ export default function AdminMaster() {
                     <td className="p-4 text-slate-300">
                       <div className="max-w-[320px] break-all text-xs md:text-sm">{linkPorSlug(empresa.slug, "login")}</div>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <Button size="sm" variant="outline" onClick={() => abrirLink(linkPorSlug(empresa.slug, "login"))}>
+                        <Button className={BOTAO_SECUNDARIO} size="sm" variant="outline" onClick={() => abrirLink(linkPorSlug(empresa.slug, "login"))}>
                           <ExternalLink className="mr-1 h-3.5 w-3.5" />Abrir
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => copiarLink(linkPorSlug(empresa.slug, "login"))}>
+                        <Button className={BOTAO_SECUNDARIO} size="sm" variant="outline" onClick={() => copiarLink(linkPorSlug(empresa.slug, "login"))}>
                           <Copy className="mr-1 h-3.5 w-3.5" />Copiar
                         </Button>
                       </div>
@@ -429,16 +446,16 @@ export default function AdminMaster() {
                     <td className="p-4 text-center">{empresa.agendamentosTotal}</td>
                     <td className="p-4">
                       <div className="flex flex-wrap justify-center gap-2">
-                        <Button size="sm" variant="outline" onClick={() => abrirEditar(empresa)} title="Editar"><Edit className="h-4 w-4" /></Button>
+                        <Button className={BOTAO_SECUNDARIO} size="sm" variant="outline" onClick={() => abrirEditar(empresa)} title="Editar"><Edit className="h-4 w-4" /></Button>
                         {empresa.ativo ? (
-                          <Button size="sm" variant="outline" onClick={() => bloquear(empresa)} title="Bloquear"><Lock className="h-4 w-4" /></Button>
+                          <Button className={BOTAO_PERIGO} size="sm" variant="outline" onClick={() => bloquear(empresa)} title="Bloquear"><Lock className="h-4 w-4" /></Button>
                         ) : (
-                          <Button size="sm" variant="outline" onClick={() => reativar(empresa)} title="Reativar"><Unlock className="h-4 w-4" /></Button>
+                          <Button className={BOTAO_SECUNDARIO} size="sm" variant="outline" onClick={() => reativar(empresa)} title="Reativar"><Unlock className="h-4 w-4" /></Button>
                         )}
-                        <Button size="sm" variant="outline" onClick={() => renovar(empresa, 30)} title="Renovar 30 dias"><RotateCw className="h-4 w-4" /></Button>
-                        <Button size="sm" onClick={() => abrirLink(linkPorSlug(empresa.slug, "login"))} title="Abrir login"><Eye className="h-4 w-4" /></Button>
-                        <Button size="sm" variant="outline" onClick={() => copiarLink(linkPorSlug(empresa.slug, "login"))} title="Copiar link"><Copy className="h-4 w-4" /></Button>
-                        <Button size="sm" variant="outline" onClick={() => inativar(empresa)} title="Inativar"><Trash2 className="h-4 w-4" /></Button>
+                        <Button className={BOTAO_SECUNDARIO} size="sm" variant="outline" onClick={() => renovar(empresa, 30)} title="Renovar 30 dias"><RotateCw className="h-4 w-4" /></Button>
+                        <Button className={BOTAO_PRIMARIO} size="sm" onClick={() => abrirLink(linkPorSlug(empresa.slug, "login"))} title="Abrir login"><Eye className="h-4 w-4" /></Button>
+                        <Button className={BOTAO_SECUNDARIO} size="sm" variant="outline" onClick={() => copiarLink(linkPorSlug(empresa.slug, "login"))} title="Copiar link"><Copy className="h-4 w-4" /></Button>
+                        <Button className={BOTAO_PERIGO} size="sm" variant="outline" onClick={() => inativar(empresa)} title="Inativar"><Trash2 className="h-4 w-4" /></Button>
                       </div>
                     </td>
                   </tr>
@@ -458,29 +475,29 @@ export default function AdminMaster() {
                 <h2 className="text-2xl font-black">{form.id ? "Editar empresa" : "Nova empresa"}</h2>
                 <p className="text-sm text-slate-400">Configure acesso, vencimento e identidade visual.</p>
               </div>
-              <Button variant="outline" size="icon" onClick={() => setModalAberto(false)}><X className="h-4 w-4" /></Button>
+              <Button className={BOTAO_SECUNDARIO} variant="outline" size="icon" onClick={() => setModalAberto(false)}><X className="h-4 w-4" /></Button>
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
-              <div><Label>Nome da empresa</Label><Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value, slug: form.slug || slugify(e.target.value) })} /></div>
-              <div><Label>Slug</Label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: slugify(e.target.value) })} /></div>
-              <div><Label>Plano</Label><select className="w-full rounded-xl border bg-background p-3 text-foreground" value={form.plano} onChange={(e) => setForm({ ...form, plano: e.target.value })}><option>Teste</option><option>Mensal</option><option>Trimestral</option><option>Semestral</option><option>Anual</option></select></div>
-              <div><Label>E-mail</Label><Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-              <div><Label>Telefone</Label><Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></div>
-              <div><Label>Cor principal</Label><Input type="color" value={form.corPrimaria} onChange={(e) => setForm({ ...form, corPrimaria: e.target.value })} /></div>
-              <div><Label>Ativa até</Label><Input type="date" value={form.ativaAte} onChange={(e) => setForm({ ...form, ativaAte: e.target.value })} /></div>
-              <div><Label>Dias de aviso</Label><Input type="number" min="1" value={form.diasAviso} onChange={(e) => setForm({ ...form, diasAviso: e.target.value })} /></div>
+              <div><Label>Nome da empresa</Label><Input className={CAMPO_ESCURO} value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value, slug: form.slug || slugify(e.target.value) })} /></div>
+              <div><Label>Slug</Label><Input className={CAMPO_ESCURO} value={form.slug} onChange={(e) => setForm({ ...form, slug: slugify(e.target.value) })} /></div>
+              <div><Label>Plano</Label><select className={SELECT_ESCURO} value={form.plano} onChange={(e) => setForm({ ...form, plano: e.target.value })}><option>Teste</option><option>Mensal</option><option>Trimestral</option><option>Semestral</option><option>Anual</option></select></div>
+              <div><Label>E-mail</Label><Input className={CAMPO_ESCURO} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+              <div><Label>Telefone</Label><Input className={CAMPO_ESCURO} value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} /></div>
+              <div><Label>Cor principal</Label><Input className={CAMPO_ESCURO} type="color" value={form.corPrimaria} onChange={(e) => setForm({ ...form, corPrimaria: e.target.value })} /></div>
+              <div><Label>Ativa até</Label><Input className={CAMPO_ESCURO} type="date" value={form.ativaAte} onChange={(e) => setForm({ ...form, ativaAte: e.target.value })} /></div>
+              <div><Label>Dias de aviso</Label><Input className={CAMPO_ESCURO} type="number" min="1" value={form.diasAviso} onChange={(e) => setForm({ ...form, diasAviso: e.target.value })} /></div>
               <label className="mt-6 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 p-3"><input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} /> Empresa ativa</label>
-              <div className="md:col-span-3"><Label>Motivo do bloqueio/observação</Label><Input value={form.bloqueioMotivo} onChange={(e) => setForm({ ...form, bloqueioMotivo: e.target.value })} /></div>
+              <div className="md:col-span-3"><Label>Motivo do bloqueio/observação</Label><Input className={CAMPO_ESCURO} value={form.bloqueioMotivo} onChange={(e) => setForm({ ...form, bloqueioMotivo: e.target.value })} /></div>
             </div>
 
             {!form.id && (
               <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                 <div className="mb-3 flex items-center gap-2 font-bold"><Lock className="h-4 w-4 text-[#f6b21a]" /> Administrador da empresa</div>
                 <div className="grid gap-4 md:grid-cols-3">
-                  <div><Label>Nome admin</Label><Input value={form.adminNome} onChange={(e) => setForm({ ...form, adminNome: e.target.value })} /></div>
-                  <div><Label>E-mail admin</Label><Input value={form.adminEmail} onChange={(e) => setForm({ ...form, adminEmail: e.target.value })} /></div>
-                  <div><Label>Senha inicial</Label><Input value={form.adminSenha} onChange={(e) => setForm({ ...form, adminSenha: e.target.value })} /></div>
+                  <div><Label>Nome admin</Label><Input className={CAMPO_ESCURO} value={form.adminNome} onChange={(e) => setForm({ ...form, adminNome: e.target.value })} /></div>
+                  <div><Label>E-mail admin</Label><Input className={CAMPO_ESCURO} value={form.adminEmail} onChange={(e) => setForm({ ...form, adminEmail: e.target.value })} /></div>
+                  <div><Label>Senha inicial</Label><Input className={CAMPO_ESCURO} value={form.adminSenha} onChange={(e) => setForm({ ...form, adminSenha: e.target.value })} /></div>
                 </div>
               </div>
             )}
@@ -498,16 +515,16 @@ export default function AdminMaster() {
                     <div className="mt-2 flex h-24 items-center justify-center rounded-xl bg-black/20 p-2">
                       {form[campo] ? <img src={form[campo]} className="max-h-20 max-w-full object-contain" /> : <span className="text-xs text-slate-400">Sem imagem</span>}
                     </div>
-                    <Input className="mt-3" type="file" accept="image/*" onChange={(e) => selecionarImagem(campo, e.target.files?.[0])} />
-                    <Input className="mt-2" placeholder="Ou informe uma URL/caminho" value={form[campo]} onChange={(e) => setForm({ ...form, [campo]: e.target.value })} />
+                    <Input className={`mt-3 ${CAMPO_ESCURO}`} type="file" accept="image/*" onChange={(e) => selecionarImagem(campo, e.target.files?.[0])} />
+                    <Input className={`mt-2 ${CAMPO_ESCURO}`} placeholder="Ou informe uma URL/caminho" value={form[campo]} onChange={(e) => setForm({ ...form, [campo]: e.target.value })} />
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="mt-6 flex flex-col gap-2 md:flex-row md:justify-end">
-              <Button variant="outline" onClick={() => setModalAberto(false)}>Cancelar</Button>
-              <Button onClick={salvarEmpresa}><Save className="mr-2 h-4 w-4" />Salvar empresa</Button>
+              <Button className={BOTAO_SECUNDARIO} variant="outline" onClick={() => setModalAberto(false)}>Cancelar</Button>
+              <Button className={BOTAO_PRIMARIO} onClick={salvarEmpresa}><Save className="mr-2 h-4 w-4" />Salvar empresa</Button>
             </div>
           </div>
         </div>

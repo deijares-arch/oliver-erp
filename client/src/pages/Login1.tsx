@@ -45,34 +45,9 @@ function carregarConfigLocal(): LoginConfig {
   }
 }
 
-function slugDoSubdominioAtual() {
-  if (typeof window === "undefined") return "";
-  const host = String(window.location.hostname || "").toLowerCase();
-  if (!host || host === "localhost" || host.startsWith("127.")) return "";
-
-  const partes = host.split(".").filter(Boolean);
-  if (partes.length < 3) return "";
-
-  const primeiro = partes[0];
-  const reservados = new Set(["www", "app", "api", "master", "admin", "admin-master"]);
-  return reservados.has(primeiro) ? "" : primeiro;
-}
-
-function slugDaRotaLocal(location: string) {
-  const seg = String(location || "").split("/").filter(Boolean)[0] || "";
-  const reservados = new Set(["login", "agendar", "admin", "admin-master", "cadastrar-empresa", "empresa-nao-informada", "esqueci-senha", "redefinir-senha"]);
-  return seg && !reservados.has(seg) ? seg : "";
-}
-
-function prefixarRota(path: string, slug: string) {
-  if (!slug || slugDoSubdominioAtual()) return path;
-  if (path === "/") return `/${slug}/`;
-  return `/${slug}${path}`;
-}
-
 export default function Login() {
   const [location, navigate] = useLocation();
-  const slugEmpresa = slugDoSubdominioAtual() || slugDaRotaLocal(location);
+  const slugEmpresa = String(location || "").split("/").filter(Boolean)[0] || "";
   const { login } = useAuth();
 
   const [config, setConfig] = useState<LoginConfig>({
@@ -196,7 +171,7 @@ export default function Login() {
       await login(email.trim(), senha, slugEmpresa);
 
       toast.success("Login realizado com sucesso.");
-      navigate(prefixarRota("/", slugEmpresa));
+      navigate(slugEmpresa ? `/${slugEmpresa}/` : "/");
     } catch (error: any) {
       const mensagem = error?.message || "E-mail ou senha inválidos.";
       setErroLogin(
@@ -383,7 +358,7 @@ export default function Login() {
                       return;
                     }
 
-                    navigate(prefixarRota("/esqueci-senha", slugEmpresa));
+                    navigate(`/${slugEmpresa}/esqueci-senha`);
                   }}
                 >
                   Esqueceu sua senha?

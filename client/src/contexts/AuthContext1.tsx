@@ -34,37 +34,20 @@ const AuthContext = createContext<AuthContextData | null>(null);
 const STORAGE_KEY = '@sistema_saas_usuario';
 const EMPRESA_SLUG_KEY = '@sistema_saas_empresa_slug';
 
-function slugDoSubdominioAtual() {
-  if (typeof window === 'undefined') return '';
-  const host = String(window.location.hostname || '').toLowerCase();
-  if (!host || host === 'localhost' || host.startsWith('127.')) return '';
-
-  const partes = host.split('.').filter(Boolean);
-  if (partes.length < 3) return '';
-
-  const primeiro = partes[0];
-  const reservados = new Set(['www', 'app', 'api', 'master', 'admin', 'admin-master']);
-  return reservados.has(primeiro) ? '' : primeiro;
-}
-
 function slugDaRotaAtual() {
   if (typeof window === 'undefined') return '';
   const seg = String(window.location.pathname || '').split('/').filter(Boolean)[0] || '';
-  const reservados = new Set(['login', 'agendar', 'admin', 'admin-master', 'api', 'assets', 'uploads', 'cadastrar-empresa', 'empresa-nao-informada', 'esqueci-senha', 'redefinir-senha']);
+  const reservados = new Set(['login', 'agendar', 'admin', 'admin-master', 'api', 'assets', 'uploads']);
   return seg && !reservados.has(seg) ? seg : '';
-}
-
-function empresaSlugAtual() {
-  return slugDoSubdominioAtual() || slugDaRotaAtual();
 }
 
 function empresaSlugAtualGlobal() {
   if (typeof window === 'undefined') return 'letsbarbearia';
   try {
     const usuario = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-    return empresaSlugAtual() || usuario?.empresaSlug || localStorage.getItem(EMPRESA_SLUG_KEY) || 'letsbarbearia';
+    return slugDaRotaAtual() || usuario?.empresaSlug || localStorage.getItem(EMPRESA_SLUG_KEY) || 'letsbarbearia';
   } catch {
-    return empresaSlugAtual() || localStorage.getItem(EMPRESA_SLUG_KEY) || 'letsbarbearia';
+    return slugDaRotaAtual() || localStorage.getItem(EMPRESA_SLUG_KEY) || 'letsbarbearia';
   }
 }
 
@@ -118,7 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, senha: string, empresaSlug?: string) => {
-    const slug = empresaSlug || empresaSlugAtual() || localStorage.getItem(EMPRESA_SLUG_KEY) || "letsbarbearia";
+    const slug = empresaSlug || localStorage.getItem(EMPRESA_SLUG_KEY) || "letsbarbearia";
     const response = await fetch('/api/auth/login', {
       method: 'POST',
       headers: {
@@ -143,7 +126,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setUsuario(null);
     localStorage.removeItem(STORAGE_KEY);
-    window.location.href = '/login';
+    const slug = usuario?.empresaSlug || localStorage.getItem(EMPRESA_SLUG_KEY) || '';
+    window.location.href = slug ? `/${slug}/login` : '/login';
   };
 
   const pode = (permissao: string) => {

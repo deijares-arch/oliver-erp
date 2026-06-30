@@ -633,21 +633,15 @@ export function registerApiRoutes(app: Express) {
       );
 
       const protocolo = protocoloRows[0] || {};
-      const host = String(req.headers["x-forwarded-host"] || req.headers.host || "")
-        .split(",")[0]
-        .trim()
-        .replace(/:\d+$/, "");
-      const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https");
+      const host = String(req.headers["x-forwarded-host"] || req.headers.host || "");
+      const proto = String(req.headers["x-forwarded-proto"] || "https");
       const origem = host ? `${proto}://${host}` : "";
-      const isLocal = !host || host === "localhost" || host.startsWith("127.");
-      const dominioBase = host.replace(/^www\./, "");
-      const linkAcesso = isLocal ? `${origem}/${slug}/login` : `${proto}://${slug}.${dominioBase}/login`;
 
       ok(res, {
         empresaId: String(result.insertId),
         empresaNome: protocolo.nome || empresaNome,
         slug,
-        linkAcesso,
+        linkAcesso: `${origem}/${slug}/login`,
         adminEmail: responsavelEmail,
         ativaAte: dataBRPublica(protocolo.ativa_ate),
         plano: "Teste",

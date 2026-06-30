@@ -94,38 +94,19 @@ const empresaMenuPadrao: EmpresaMenuConfig = {
   observacao: "",
 };
 
-function slugDoSubdominioAtual() {
-  if (typeof window === "undefined") return "";
-  const host = String(window.location.hostname || "").toLowerCase();
-  if (!host || host === "localhost" || host.startsWith("127.")) return "";
-
-  const partes = host.split(".").filter(Boolean);
-  if (partes.length < 3) return "";
-
-  const primeiro = partes[0];
-  const reservados = new Set(["www", "app", "api", "master", "admin", "admin-master"]);
-  return reservados.has(primeiro) ? "" : primeiro;
-}
-
 function slugDaRota(pathname: string) {
-  const slugSubdominio = slugDoSubdominioAtual();
-  if (slugSubdominio) return slugSubdominio;
-
-  // Mantém compatibilidade para teste local: localhost:3000/letsbarbearia/login
   const seg = String(pathname || "").split("?")[0].split("/").filter(Boolean)[0] || "";
   const reservados = new Set(["login", "agendar", "admin", "admin-master", "cadastrar-empresa", "empresa-nao-informada", "esqueci-senha", "redefinir-senha", "404"]);
   return seg && !reservados.has(seg) ? seg : "";
 }
 
 function prefixarRota(path: string, slug: string) {
-  if (!slug || slugDoSubdominioAtual()) return path;
+  if (!slug) return path;
   if (path === "/") return `/${slug}/`;
   return `/${slug}${path}`;
 }
 
 function rotaInterna(pathname: string) {
-  if (slugDoSubdominioAtual()) return pathname || "/";
-
   const slug = slugDaRota(pathname);
   if (!slug) return pathname || "/";
   const semSlug = String(pathname || "/").replace(`/${slug}`, "") || "/";
@@ -552,7 +533,7 @@ function Router() {
   const { pode, usuario } = useAuth();
   const [location] = useLocation();
   const slug = slugDaRota(location);
-  const base = slug && !slugDoSubdominioAtual() ? `/${slug}` : "";
+  const base = slug ? `/${slug}` : "";
 
   const bloqueado = (
     <div className="flex min-h-[70vh] items-center justify-center p-6">
@@ -644,7 +625,7 @@ function EmpresaNaoInformada() {
         <div className="mt-6 rounded-2xl border border-white/10 bg-black/30 p-4 text-left text-sm text-slate-300">
           <p className="font-bold text-white">Formato correto:</p>
           <p className="mt-2 break-all text-[#f6c24a]">
-            https://nome-da-empresa.olivererp.com/login
+            https://oliver-erp-production.up.railway.app/nome-da-empresa/login
           </p>
         </div>
 
@@ -661,25 +642,18 @@ function ProtectedApp() {
   const [location, navigate] = useLocation();
   const slug = slugDaRota(location);
 
-  const loginPath = prefixarRota("/login", slug);
-  const esqueciSenhaPath = prefixarRota("/esqueci-senha", slug);
-  const redefinirSenhaPath = prefixarRota("/redefinir-senha", slug);
-
-  const rotaLogin = Boolean(slug && location === loginPath);
+  const rotaLogin = Boolean(slug && location === `/${slug}/login`);
   const rotaCadastroEmpresa = location === "/cadastrar-empresa";
-  const rotaEsqueciSenha = Boolean(slug && location === esqueciSenhaPath);
-  const rotaRedefinirSenha = Boolean(slug && location.startsWith(redefinirSenhaPath));
+  const rotaEsqueciSenha = Boolean(slug && location === `/${slug}/esqueci-senha`);
+  const rotaRedefinirSenha = Boolean(slug && location.startsWith(`/${slug}/redefinir-senha`));
 
   const rotaSemEmpresa =
-    (!slug && location === "/") ||
-    (!slug && location === "/login") ||
+    location === "/" ||
+    location === "/login" ||
     location === "/empresa-nao-informada";
 
   const rotaAdmin = location === "/admin" || location === "/admin/login" || location === "/admin/empresas";
-  const rotaPublicaAgendamento =
-    location === "/agendar" ||
-    location.startsWith("/agendar?") ||
-    Boolean(slug && !slugDoSubdominioAtual() && (location === `/${slug}/agendar` || location.startsWith(`/${slug}/agendar?`)));
+  const rotaPublicaAgendamento = location === "/agendar" || location.startsWith("/agendar?") || Boolean(slug && (location === `/${slug}/agendar` || location.startsWith(`/${slug}/agendar?`)));
 
   useEffect(() => {
     if (
@@ -699,11 +673,11 @@ function ProtectedApp() {
         return;
       }
 
-      navigate(prefixarRota("/login", slug));
+      navigate(`/${slug}/login`);
     }
 
     if (!carregando && logado && rotaLogin) {
-      navigate(prefixarRota("/", slug));
+      navigate(`/${slug}/`);
     }
   }, [carregando, logado, location, navigate, rotaPublicaAgendamento, rotaLogin, rotaAdmin, rotaSemEmpresa, rotaCadastroEmpresa, rotaEsqueciSenha, rotaRedefinirSenha, slug]);
 

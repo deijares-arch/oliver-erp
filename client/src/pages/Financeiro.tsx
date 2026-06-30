@@ -1,4 +1,5 @@
 import { useBarbearia } from '@/contexts/BarbeariaContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { ArrowDownCircle, DollarSign, Filter, Scissors, TrendingUp, Users } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { PageShell, SummaryCard } from '@/components/PageShell';
@@ -55,7 +56,19 @@ function ehEstornoDespesa(item: any) {
 }
 
 export default function Financeiro() {
+  const { usuario, pode } = useAuth();
   const { agendamentos, profissionais, servicos } = useBarbearia() as any;
+  const financeiroProprio = Boolean(
+    usuario &&
+    usuario.perfil !== 'Administrador' &&
+    usuario.profissionalId &&
+    (pode('financeiro.proprio.ver') || pode('financeiro.proprio.comissoes') || pode('financeiro.proprio.atendimentos'))
+  );
+  const profissionalDoUsuario = useMemo(
+    () => profissionais.find((p: any) => String(p.id) === String(usuario?.profissionalId || '')),
+    [profissionais, usuario?.profissionalId]
+  );
+  const nomeProfissionalProprio = profissionalDoUsuario?.nome || usuario?.profissionalNome || usuario?.profissionalApelido || '';
   const [despesas, setDespesas] = useState<DespesaFinanceiro[]>([]);
   const [fluxo, setFluxo] = useState<MovimentoFluxo[]>([]);
   const [filtros, setFiltros] = useState({ dataInicio: '', dataFim: '', profissional: 'Todos', categoria: 'Todas', status: 'Todos' });
@@ -67,21 +80,27 @@ export default function Financeiro() {
     });
   }, []);
 
-  const profissionaisFiltro = useMemo(() => ['Todos', ...profissionais.map((p: any) => p.nome)], [profissionais]);
+  const profissionaisFiltro = useMemo(() => financeiroProprio ? [nomeProfissionalProprio || 'Meu financeiro'] : ['Todos', ...profissionais.map((p: any) => p.nome)], [financeiroProprio, nomeProfissionalProprio, profissionais]);
 
   const agendamentosFiltrados = useMemo(() => {
     return agendamentos.filter((a: any) => {
       if (!['Finalizado', 'Realizado'].includes(a.status)) return false;
+      if (financeiroProprio && String(a.profissionalId) !== String(usuario?.profissionalId || '')) return false;
       if (!dentroPeriodo(a.data, filtros.dataInicio, filtros.dataFim)) return false;
-      if (filtros.profissional !== 'Todos' && a.profissionalNome !== filtros.profissional) return false;
+      if (!financeiroProprio && filtros.profissional !== 'Todos' && a.profissionalNome !== filtros.profissional) return false;
       if (filtros.status !== 'Todos' && a.status !== filtros.status) return false;
       return true;
     });
-  }, [agendamentos, filtros]);
+  }, [agendamentos, filtros, financeiroProprio, usuario?.profissionalId]);
 
   const fluxoFiltrado = useMemo(() => {
     return fluxo.filter((m) => {
       if (!dentroPeriodo(m.data, filtros.dataInicio, filtros.dataFim)) return false;
+      if (financeiroProprio) {
+        const textoMov = `${m.descricao || ''} ${m.categoria || ''}`.toLowerCase();
+        const nome = String(nomeProfissionalProprio || '').toLowerCase();
+        if (nome && !textoMov.includes(nome)) return false;
+      }
       if (filtros.status !== 'Todos' && m.status !== filtros.status) return false;
       if (filtros.categoria === 'Serviços' && !(ehAtendimento(m) && !ehProduto(m))) return false;
       if (filtros.categoria === 'Produtos' && !ehProduto(m)) return false;
@@ -89,19 +108,25 @@ export default function Financeiro() {
       if (filtros.categoria === 'Despesas' && (m.tipo !== 'Saída' || ehComissao(m))) return false;
       return true;
     });
-  }, [fluxo, filtros]);
+  }, [fluxo, filtros, financeiroProprio, nomeProfissionalProprio]);
 
   const despesasFiltradas = useMemo(() => {
     return despesas.filter((d) => {
       const dataBase = d.status === 'Pago' && d.dataPagamento ? d.dataPagamento : d.data;
       if (!dentroPeriodo(dataBase, filtros.dataInicio, filtros.dataFim)) return false;
+      if (financeiroProprio) {
+        const nome = String(nomeProfissionalProprio || '').toLowerCase();
+        const fornecedor = String(d.fornecedor || '').toLowerCase();
+        if (d.categoria !== 'Comissão') return false;
+        if (nome && fornecedor !== nome && !fornecedor.includes(nome)) return false;
+      }
       if (filtros.status !== 'Todos' && d.status !== filtros.status) return false;
-      if (filtros.profissional !== 'Todos' && d.categoria === 'Comissão' && d.fornecedor !== filtros.profissional) return false;
+      if (!financeiroProprio && filtros.profissional !== 'Todos' && d.categoria === 'Comissão' && d.fornecedor !== filtros.profissional) return false;
       if (filtros.categoria === 'Comissões' && d.categoria !== 'Comissão') return false;
       if (filtros.categoria === 'Despesas' && (d.categoria === 'Comissão' || ehTaxaCartao(d))) return false;
       return true;
     });
-  }, [despesas, filtros]);
+  }, [despesas, filtros, financeiroProprio, nomeProfissionalProprio]);
 
   const entradasFluxo = fluxoFiltrado.filter((m) => m.tipo === 'Entrada' && m.status === 'Pago' && !ehEstornoDespesa(m));
   const saidasFluxo = fluxoFiltrado.filter((m) => m.tipo === 'Saída' && m.status === 'Pago');
@@ -138,7 +163,7 @@ export default function Financeiro() {
   const comissaoPorProfissional = profissionais
     .map((prof: any) => {
       const nome = String(prof.nome || '');
-      const comissoesDespesa = despesas.filter((d) => d.categoria === 'Comissão' && d.fornecedor === nome && dentroPeriodo(d.status === 'Pago' && d.dataPagamento ? d.dataPagamento : d.data, filtros.dataInicio, filtros.dataFim));
+      const comissoesDespesa = despesasFiltradas.filter((d) => d.categoria === 'Comissão' && d.fornecedor === nome && dentroPeriodo(d.status === 'Pago' && d.dataPagamento ? d.dataPagamento : d.data, filtros.dataInicio, filtros.dataFim));
       const pendente = comissoesDespesa.filter((d) => d.status === 'Pendente').reduce((s, d) => s + Number(d.valor || 0), 0);
       const paga = comissoesDespesa.filter((d) => d.status === 'Pago').reduce((s, d) => s + Number(d.valor || 0), 0);
       const atendimentos = agendamentosFiltrados.filter((a: any) => String(a.profissionalId) === String(prof.id));
@@ -147,17 +172,17 @@ export default function Financeiro() {
     })
     .filter((p: any) => p.receita > 0 || p.comissaoPendente > 0 || p.comissaoPaga > 0);
 
-  const limparFiltros = () => setFiltros({ dataInicio: '', dataFim: '', profissional: 'Todos', categoria: 'Todas', status: 'Todos' });
+  const limparFiltros = () => setFiltros({ dataInicio: '', dataFim: '', profissional: financeiroProprio ? (nomeProfissionalProprio || 'Todos') : 'Todos', categoria: 'Todas', status: 'Todos' });
 
   return (
-    <PageShell title="Financeiro" subtitle="Resumo gerencial com filtros por período, profissional, categoria e status.">
+    <PageShell title={financeiroProprio ? "Meu Financeiro" : "Financeiro"} subtitle={financeiroProprio ? "Resumo dos seus atendimentos, faturamento e comissões." : "Resumo gerencial com filtros por período, profissional, categoria e status."}>
       <div className="space-y-5">
         <div className="rounded-2xl border bg-card p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2 font-bold"><Filter className="h-4 w-4" />Filtros</div>
           <div className="grid gap-2 md:grid-cols-5">
             <input type="date" className="rounded-xl border bg-background p-3" value={filtros.dataInicio} onChange={(e) => setFiltros({ ...filtros, dataInicio: e.target.value })} />
             <input type="date" className="rounded-xl border bg-background p-3" value={filtros.dataFim} onChange={(e) => setFiltros({ ...filtros, dataFim: e.target.value })} />
-            <select className="rounded-xl border bg-background p-3" value={filtros.profissional} onChange={(e) => setFiltros({ ...filtros, profissional: e.target.value })}>{profissionaisFiltro.map((p: string) => <option key={p}>{p}</option>)}</select>
+            <select className="rounded-xl border bg-background p-3" value={financeiroProprio ? (nomeProfissionalProprio || profissionaisFiltro[0]) : filtros.profissional} disabled={financeiroProprio} onChange={(e) => setFiltros({ ...filtros, profissional: e.target.value })}>{profissionaisFiltro.map((p: string) => <option key={p}>{p}</option>)}</select>
             <select className="rounded-xl border bg-background p-3" value={filtros.categoria} onChange={(e) => setFiltros({ ...filtros, categoria: e.target.value })}><option>Todas</option><option>Serviços</option><option>Produtos</option><option>Comissões</option><option>Despesas</option></select>
             <select className="rounded-xl border bg-background p-3" value={filtros.status} onChange={(e) => setFiltros({ ...filtros, status: e.target.value })}><option>Todos</option><option>Pago</option><option>Pendente</option><option>Realizado</option><option>Finalizado</option></select>
           </div>

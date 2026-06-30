@@ -40,8 +40,11 @@ export default function Profissionais() {
   const [editando, setEditando] = useState<string | null>(null);
   const [profissionalSelecionadoId, setProfissionalSelecionadoId] = useState('');
   const [despesasComissao, setDespesasComissao] = useState<any[]>([]);
+  const [usuarios, setUsuarios] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     nome: '',
+    apelido: '',
+    usuarioId: '',
     funcao: 'Profissional',
     comissao: 40,
     intervaloAgenda: 30,
@@ -64,6 +67,13 @@ export default function Profissionais() {
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => setDespesasComissao((json?.data || []).filter((d: any) => d.categoria === 'Comissão')))
       .catch(() => setDespesasComissao([]));
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/usuarios')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => setUsuarios(json?.data || []))
+      .catch(() => setUsuarios([]));
   }, []);
 
   const profissionalSelecionado = useMemo(
@@ -96,6 +106,8 @@ export default function Profissionais() {
     if (p) {
       setFormData({
         nome: p.nome,
+        apelido: p.apelido || '',
+        usuarioId: p.usuarioId || p.usuario_id || '',
         funcao: p.funcao || 'Profissional',
         comissao: Number(p.comissao || 0),
         intervaloAgenda: Number(p.intervaloAgenda || p.intervalo_agenda || 30),
@@ -108,6 +120,8 @@ export default function Profissionais() {
     } else {
       setFormData({
         nome: '',
+        apelido: '',
+        usuarioId: '',
         funcao: 'Profissional',
         comissao: 40,
         intervaloAgenda: 30,
@@ -309,7 +323,9 @@ export default function Profissionais() {
                       </div>
 
                       <div>
-                        <h3 className="text-xl font-semibold">{p.nome}</h3>
+                        <h3 className="text-xl font-semibold">{p.apelido || p.nome}</h3>
+                        {p.apelido && <p className="text-xs text-muted-foreground">Nome completo: {p.nome}</p>}
+                        {p.usuarioNome && <p className="text-xs text-primary">Usuário vinculado: {p.usuarioNome}</p>}
                         <p className="text-sm text-muted-foreground">
                           {p.funcao || 'Profissional'} • {p.comissao || 0}% comissão • agenda {p.intervaloAgenda || 30} min • antecedência {Number(p.antecedenciaAgendamento || p.antecedencia_agendamento || 0) || 'empresa'}h
                         </p>
@@ -540,13 +556,48 @@ export default function Profissionais() {
           </DialogHeader>
 
           <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div>
+                <Label>Nome completo *</Label>
+                <Input
+                  value={formData.nome}
+                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                  className="border-border bg-secondary"
+                />
+              </div>
+
+              <div>
+                <Label>Como quer ser chamado / Apelido público</Label>
+                <Input
+                  value={formData.apelido}
+                  onChange={(e) => setFormData({ ...formData, apelido: e.target.value })}
+                  placeholder="Ex.: João Barber, Carlos Fade"
+                  className="border-border bg-secondary"
+                />
+              </div>
+            </div>
+
             <div>
-              <Label>Nome *</Label>
-              <Input
-                value={formData.nome}
-                onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                className="border-border bg-secondary"
-              />
+              <Label>Usuário vinculado ao profissional</Label>
+              <Select
+                value={formData.usuarioId ? String(formData.usuarioId) : 'nenhum'}
+                onValueChange={(value) => setFormData({ ...formData, usuarioId: value === 'nenhum' ? '' : value })}
+              >
+                <SelectTrigger className="border-border bg-secondary">
+                  <SelectValue placeholder="Sem usuário vinculado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nenhum">Sem usuário vinculado</SelectItem>
+                  {usuarios.map((u: any) => (
+                    <SelectItem key={u.id} value={String(u.id)}>
+                      {u.nome} • {u.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Se vincular um usuário e marcar a permissão “Agenda - Ver somente minha agenda”, ele verá apenas os próprios horários.
+              </p>
             </div>
 
             <div>

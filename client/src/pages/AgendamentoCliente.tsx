@@ -51,6 +51,8 @@ type Servico = {
 type Profissional = {
   id: string;
   nome: string;
+  apelido?: string;
+  nomePublico?: string;
   funcao?: string;
   antecedenciaAgendamento?: number;
   servicosIds?: string[];
@@ -398,7 +400,7 @@ export default function AgendamentoCliente() {
                       <SelectContent>
                         {profissionais.map((p) => (
                           <SelectItem key={p.id} value={String(p.id)}>
-                            {p.nome}
+                            {p.apelido || p.nome}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -560,7 +562,7 @@ export default function AgendamentoCliente() {
                 </p>
                 <p>
                   Profissional:{" "}
-                  <b>{profissionalSelecionado?.nome || "Não selecionado"}</b>
+                  <b>{profissionalSelecionado?.apelido || profissionalSelecionado?.nome || "Não selecionado"}</b>
                 </p>
                 <p>
                   Data: <b>{data}</b>

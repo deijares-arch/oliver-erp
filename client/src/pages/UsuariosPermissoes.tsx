@@ -31,6 +31,7 @@ type UsuarioPendente = {
 const permissoesDisponiveis = [
   ['inicio.ver', 'Início - Ver'],
   ['agenda.ver', 'Agenda - Ver'],
+  ['agenda.ver_apenas_minha', 'Agenda - Ver somente minha agenda'],
   ['agenda.criar', 'Agenda - Criar'],
   ['agenda.editar', 'Agenda - Editar'],
   ['agenda.finalizar', 'Agenda - Finalizar'],
@@ -42,6 +43,10 @@ const permissoesDisponiveis = [
   ['produtos.ver', 'Produtos - Ver'],
   ['produtos.editar', 'Produtos - Editar'],
   ['financeiro.ver', 'Financeiro - Ver'],
+  ['financeiro.proprio.ver', 'Financeiro - Ver somente meu financeiro'],
+  ['financeiro.proprio.comissoes', 'Financeiro - Ver minhas comissões'],
+  ['financeiro.proprio.atendimentos', 'Financeiro - Ver meus atendimentos'],
+  ['clientes.proprio.ver', 'Clientes - Ver somente meus clientes'],
   ['fluxo.ver', 'Fluxo de Caixa - Ver'],
   ['despesas.ver', 'Despesas - Ver'],
   ['despesas.pagar', 'Despesas - Pagar'],
